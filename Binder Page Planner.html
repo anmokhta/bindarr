@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binder Page Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink: #1E2A22;
+    --ink-soft: #445146;
+    --paper: #F3EFE4;
+    --paper-raised: #FBF9F3;
+    --vinyl: #2F4B3C;
+    --vinyl-light: #3E6350;
+    --gold: #B8902F;
+    --pocket-border: #D3CCB9;
+    --pocket-empty: #EAE5D6;
+    --tag-showcase: #B8902F;
+    --tag-set: #3E7C74;
+    --tag-trade: #A85C3E;
+    --danger: #A8402E;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ink: #EDE8DA;
+      --ink-soft: #B9C2B7;
+      --paper: #151C17;
+      --paper-raised: #1D261F;
+      --vinyl: #4E7862;
+      --vinyl-light: #5E8B72;
+      --gold: #D4AF56;
+      --pocket-border: #37432F;
+      --pocket-empty: #1B241C;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #EDE8DA;
+    --ink-soft: #B9C2B7;
+    --paper: #151C17;
+    --paper-raised: #1D261F;
+    --vinyl: #4E7862;
+    --vinyl-light: #5E8B72;
+    --gold: #D4AF56;
+    --pocket-border: #37432F;
+    --pocket-empty: #1B241C;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    padding: 28px 20px 60px;
+    min-height: 100vh;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+
+  header h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 600;
+    font-size: clamp(28px, 5vw, 38px);
+    margin: 0 0 4px;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    margin: 0 0 22px;
+    color: var(--ink-soft);
+    font-size: 14px;
+    max-width: 56ch;
+  }
+
+  .type-toggle {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 18px;
+    flex-wrap: wrap;
+  }
+  .type-btn {
+    flex: 1 1 200px;
+    text-align: left;
+    background: var(--paper-raised);
+    border: 1px solid var(--pocket-border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--ink);
+  }
+  .type-btn strong {
+    font-family: 'Fraunces', serif;
+    font-size: 17px;
+    display: block;
+  }
+  .type-btn span { font-size: 12.5px; color: var(--ink-soft); }
+  .type-btn.active {
+    border-color: var(--vinyl);
+    background: var(--vinyl);
+    color: #fff;
+  }
+  .type-btn.active span { color: rgba(255,255,255,0.75); }
+
+  .page-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    margin-bottom: 14px;
+    align-items: center;
+  }
+  .page-tab {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    padding: 7px 12px;
+    border-radius: 5px 5px 0 0;
+    border: 1px solid var(--pocket-border);
+    border-bottom: none;
+    background: var(--pocket-empty);
+    color: var(--ink-soft);
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .page-tab.active {
+    background: var(--paper-raised);
+    color: var(--ink);
+    border-color: var(--vinyl);
+    font-weight: 600;
+  }
+  .page-tab input {
+    font-family: inherit;
+    font-size: inherit;
+    border: none;
+    background: transparent;
+    width: 90px;
+    color: inherit;
+    outline: none;
+  }
+  .add-page-btn, .del-page-btn {
+    flex-shrink: 0;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 12.5px;
+    border: 1px dashed var(--pocket-border);
+    background: transparent;
+    color: var(--ink-soft);
+    border-radius: 5px;
+    padding: 7px 10px;
+    cursor: pointer;
+  }
+  .del-page-btn { border-style: solid; color: var(--danger); border-color: var(--danger); margin-left: auto; }
+
+  .binder-page {
+    background: var(--paper-raised);
+    border: 1px solid var(--pocket-border);
+    border-radius: 8px;
+    padding: 18px;
+  }
+
+  .grid {
+    display: grid;
+    gap: 12px;
+  }
+  .grid.g9 { grid-template-columns: repeat(3, 1fr); }
+  .grid.g4 { grid-template-columns: repeat(2, 1fr); }
+
+  .pocket {
+    aspect-ratio: 2.5 / 3.5;
+    border: 1.5px dashed var(--pocket-border);
+    border-radius: 6px;
+    background: var(--pocket-empty);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    padding: 8px;
+    color: var(--ink-soft);
+    text-align: center;
+    transition: border-color 0.12s ease;
+  }
+  .pocket:hover { border-color: var(--vinyl-light); }
+  .pocket .plus { font-size: 22px; font-family: 'Fraunces', serif; }
+  .pocket .empty-label { font-size: 11px; margin-top: 2px; }
+
+  .pocket.filled {
+    border-style: solid;
+    background: var(--paper);
+    align-items: flex-start;
+    justify-content: flex-start;
+    cursor: grab;
+  }
+  .pocket.filled .tag-bar {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 5px;
+    border-radius: 6px 6px 0 0;
+  }
+  .pocket.filled .card-name {
+    font-weight: 600;
+    font-size: 13.5px;
+    color: var(--ink);
+    margin-top: 8px;
+    line-height: 1.25;
+    word-break: break-word;
+  }
+  .pocket.filled .card-note {
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    margin-top: 4px;
+    font-family: 'IBM Plex Mono', monospace;
+    line-height: 1.3;
+  }
+  .pocket.filled .card-tag {
+    font-size: 10px;
+    font-family: 'IBM Plex Mono', monospace;
+    margin-top: auto;
+    padding-top: 6px;
+    color: var(--ink-soft);
+  }
+  .pocket .remove-btn {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    border: 1px solid var(--pocket-border);
+    background: var(--paper-raised);
+    color: var(--ink-soft);
+    font-size: 11px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .pocket.dragover { outline: 2px solid var(--gold); outline-offset: -2px; }
+
+  .edit-form {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: default;
+  }
+  .edit-form input, .edit-form select, .edit-form textarea {
+    font-family: 'IBM Plex Sans', sans-serif;
+    font-size: 12.5px;
+    padding: 5px 6px;
+    border: 1px solid var(--pocket-border);
+    border-radius: 4px;
+    background: var(--paper-raised);
+    color: var(--ink);
+    width: 100%;
+  }
+  .edit-form textarea { resize: none; height: 34px; }
+  .edit-actions { display: flex; gap: 6px; }
+  .edit-actions button {
+    flex: 1;
+    font-size: 11.5px;
+    padding: 5px 0;
+    border-radius: 4px;
+    border: 1px solid var(--pocket-border);
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+  }
+  .edit-actions .save-btn { background: var(--vinyl); color: #fff; border-color: var(--vinyl); }
+  .edit-actions .cancel-btn { background: transparent; color: var(--ink-soft); }
+
+  .ptcg-search { border-top: 1px dashed var(--pocket-border); margin-top: 6px; padding-top: 6px; }
+  .ptcg-search-row { display: flex; gap: 4px; }
+  .ptcg-search-row input:first-child { flex: 1; }
+  .ptcg-search-row input:last-child { max-width: 46px; }
+  .ptcg-search-row button {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--vinyl);
+    background: var(--vinyl);
+    color: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .ptcg-status { font-size: 10.5px; color: var(--ink-soft); margin-top: 4px; line-height: 1.35; }
+  .ptcg-results { display: flex; flex-direction: column; gap: 4px; max-height: 120px; overflow-y: auto; margin-top: 4px; }
+  .ptcg-result {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 5px;
+    border: 1px solid var(--pocket-border);
+    border-radius: 4px;
+    cursor: pointer;
+    background: var(--paper-raised);
+    font-size: 10.5px;
+    text-align: left;
+    color: var(--ink);
+    font-family: 'IBM Plex Sans', sans-serif;
+  }
+  .ptcg-result img { width: 20px; height: auto; border-radius: 2px; flex-shrink: 0; }
+  .ptcg-result:hover { border-color: var(--vinyl-light); }
+  .pocket.filled .card-thumb {
+    width: 100%;
+    max-height: 64px;
+    object-fit: contain;
+    margin-top: 6px;
+    border-radius: 3px;
+  }
+
+  .footer-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    font-size: 12px;
+    color: var(--ink-soft);
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; font-family: 'IBM Plex Mono', monospace; }
+  .legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+  .clear-btn {
+    background: transparent;
+    border: 1px solid var(--pocket-border);
+    color: var(--ink-soft);
+    border-radius: 5px;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11.5px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Binder Page Planner</h1>
+    <p>Rough out card placement before you buy or re-sleeve pages. Switch binder types, add pages, and drag cards between pockets. Everything here saves automatically in this browser.</p>
+  </header>
+
+  <div class="type-toggle" id="typeToggle"></div>
+  <div class="page-tabs" id="pageTabs"></div>
+  <div class="binder-page">
+    <div class="grid" id="grid"></div>
+    <div class="footer-row">
+      <div class="legend">
+        <span><i style="background:var(--tag-showcase)"></i>Showcase</span>
+        <span><i style="background:var(--tag-set)"></i>Set build</span>
+        <span><i style="background:var(--tag-trade)"></i>Trade / bulk</span>
+      </div>
+      <button class="clear-btn" id="clearPageBtn">Clear this page</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var STORAGE_KEY = 'binderPlannerState_v1';
+  var TYPES = {
+    '3x3': { label: '9-Pocket Pages', sub: '3 × 3 grid — standard sheets', count: 9, gridClass: 'g9' },
+    '2x2': { label: '4-Pocket Pages', sub: '2 × 2 grid — toploader / thick cards', count: 4, gridClass: 'g4' }
+  };
+  var TAGS = {
+    none: { label: 'No tag', color: null },
+    showcase: { label: 'Showcase', color: 'var(--tag-showcase)' },
+    set: { label: 'Set build', color: 'var(--tag-set)' },
+    trade: { label: 'Trade / bulk', color: 'var(--tag-trade)' }
+  };
+
+  function blankPage(count, n) {
+    return { name: 'Page ' + n, slots: new Array(count).fill(null) };
+  }
+
+  function defaultState() {
+    return {
+      activeType: '3x3',
+      activePageIndex: { '3x3': 0, '2x2': 0 },
+      pages: {
+        '3x3': [blankPage(9, 1)],
+        '2x2': [blankPage(4, 1)]
+      }
+    };
+  }
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return defaultState();
+      var parsed = JSON.parse(raw);
+      if (!parsed || !parsed.pages) return defaultState();
+      return parsed;
+    } catch (e) {
+      return defaultState();
+    }
+  }
+
+  function save() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+    catch (e) { /* storage unavailable — continue without persistence */ }
+  }
+
+  var state = load();
+  var editingIndex = null;
+  var dragSource = null;
+
+  function currentPages() { return state.pages[state.activeType]; }
+  function currentPageIdx() { return state.activePageIndex[state.activeType]; }
+  function currentPage() { return currentPages()[currentPageIdx()]; }
+
+  function renderTypeToggle() {
+    var el = document.getElementById('typeToggle');
+    el.innerHTML = '';
+    Object.keys(TYPES).forEach(function (key) {
+      var t = TYPES[key];
+      var btn = document.createElement('button');
+      btn.className = 'type-btn' + (state.activeType === key ? ' active' : '');
+      btn.innerHTML = '<strong>' + t.label + '</strong><span>' + t.sub + '</span>';
+      btn.onclick = function () {
+        state.activeType = key;
+        editingIndex = null;
+        save();
+        renderAll();
+      };
+      el.appendChild(btn);
+    });
+  }
+
+  function renderPageTabs() {
+    var el = document.getElementById('pageTabs');
+    el.innerHTML = '';
+    var pages = currentPages();
+    pages.forEach(function (page, idx) {
+      var tab = document.createElement('div');
+      tab.className = 'page-tab' + (idx === currentPageIdx() ? ' active' : '');
+      tab.textContent = page.name;
+      tab.title = 'Double-click to rename';
+      tab.onclick = function () {
+        state.activePageIndex[state.activeType] = idx;
+        editingIndex = null;
+        save();
+        renderAll();
+      };
+      tab.ondblclick = function (e) {
+        e.stopPropagation();
+        tab.innerHTML = '';
+        var input = document.createElement('input');
+        input.value = page.name;
+        tab.appendChild(input);
+        input.focus();
+        input.select();
+        function commit() {
+          page.name = input.value.trim() || page.name;
+          save();
+          renderAll();
+        }
+        input.onblur = commit;
+        input.onkeydown = function (ev) { if (ev.key === 'Enter') input.blur(); };
+      };
+      el.appendChild(tab);
+    });
+
+    var addBtn = document.createElement('button');
+    addBtn.className = 'add-page-btn';
+    addBtn.textContent = '+ New page';
+    addBtn.onclick = function () {
+      var t = TYPES[state.activeType];
+      pages.push(blankPage(t.count, pages.length + 1));
+      state.activePageIndex[state.activeType] = pages.length - 1;
+      save();
+      renderAll();
+    };
+    el.appendChild(addBtn);
+
+    if (pages.length > 1) {
+      var delBtn = document.createElement('button');
+      delBtn.className = 'del-page-btn';
+      delBtn.textContent = 'Delete page';
+      delBtn.onclick = function () {
+        if (!confirm('Delete "' + currentPage().name + '"? This can\'t be undone.')) return;
+        pages.splice(currentPageIdx(), 1);
+        state.activePageIndex[state.activeType] = Math.max(0, currentPageIdx() - 1);
+        save();
+        renderAll();
+      };
+      el.appendChild(delBtn);
+    }
+  }
+
+  function renderGrid() {
+    var grid = document.getElementById('grid');
+    var t = TYPES[state.activeType];
+    grid.className = 'grid ' + t.gridClass;
+    grid.innerHTML = '';
+    var page = currentPage();
+
+    page.slots.forEach(function (card, idx) {
+      var pocket = document.createElement('div');
+      pocket.className = 'pocket' + (card ? ' filled' : '');
+
+      if (editingIndex === idx) {
+        pocket.appendChild(buildEditForm(card, idx));
+      } else if (card) {
+        pocket.draggable = true;
+        var tagInfo = TAGS[card.tag] || TAGS.none;
+        if (tagInfo.color) {
+          var bar = document.createElement('div');
+          bar.className = 'tag-bar';
+          bar.style.background = tagInfo.color;
+          pocket.appendChild(bar);
+        }
+        if (card.image) {
+          var thumb = document.createElement('img');
+          thumb.className = 'card-thumb';
+          thumb.src = card.image;
+          thumb.alt = card.name;
+          pocket.appendChild(thumb);
+        }
+        var name = document.createElement('div');
+        name.className = 'card-name';
+        name.textContent = card.name;
+        pocket.appendChild(name);
+        if (card.note) {
+          var note = document.createElement('div');
+          note.className = 'card-note';
+          note.textContent = card.note;
+          pocket.appendChild(note);
+        }
+        var tagLbl = document.createElement('div');
+        tagLbl.className = 'card-tag';
+        tagLbl.textContent = tagInfo.label !== 'No tag' ? tagInfo.label : '';
+        pocket.appendChild(tagLbl);
+
+        var rm = document.createElement('button');
+        rm.className = 'remove-btn';
+        rm.textContent = '×';
+        rm.onclick = function (e) {
+          e.stopPropagation();
+          page.slots[idx] = null;
+          save();
+          renderGrid();
+        };
+        pocket.appendChild(rm);
+
+        pocket.onclick = function () { editingIndex = idx; renderGrid(); };
+
+        pocket.ondragstart = function () { dragSource = idx; };
+        pocket.ondragend = function () { dragSource = null; };
+      } else {
+        var plus = document.createElement('div');
+        plus.className = 'plus';
+        plus.textContent = '+';
+        pocket.appendChild(plus);
+        var lbl = document.createElement('div');
+        lbl.className = 'empty-label';
+        lbl.textContent = 'Empty pocket';
+        pocket.appendChild(lbl);
+        pocket.onclick = function () { editingIndex = idx; renderGrid(); };
+      }
+
+      pocket.ondragover = function (e) { e.preventDefault(); pocket.classList.add('dragover'); };
+      pocket.ondragleave = function () { pocket.classList.remove('dragover'); };
+      pocket.ondrop = function (e) {
+        e.preventDefault();
+        pocket.classList.remove('dragover');
+        if (dragSource === null || dragSource === idx) return;
+        var tmp = page.slots[idx];
+        page.slots[idx] = page.slots[dragSource];
+        page.slots[dragSource] = tmp;
+        dragSource = null;
+        save();
+        renderGrid();
+      };
+
+      grid.appendChild(pocket);
+    });
+  }
+
+  function buildEditForm(card, idx) {
+    var page = currentPage();
+    var form = document.createElement('div');
+    form.className = 'edit-form';
+    form.onclick = function (e) { e.stopPropagation(); };
+    var pendingImage = card && card.image ? card.image : null;
+
+    var nameInput = document.createElement('input');
+    nameInput.placeholder = 'Card name';
+    nameInput.value = card ? card.name : '';
+    form.appendChild(nameInput);
+
+    var tagSelect = document.createElement('select');
+    Object.keys(TAGS).forEach(function (key) {
+      var opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = TAGS[key].label;
+      if (card && card.tag === key) opt.selected = true;
+      tagSelect.appendChild(opt);
+    });
+    form.appendChild(tagSelect);
+
+    var noteInput = document.createElement('textarea');
+    noteInput.placeholder = 'Note (set, condition...)';
+    noteInput.value = card ? (card.note || '') : '';
+    form.appendChild(noteInput);
+
+    var searchWrap = document.createElement('div');
+    searchWrap.className = 'ptcg-search';
+    var searchRow = document.createElement('div');
+    searchRow.className = 'ptcg-search-row';
+    var qName = document.createElement('input');
+    qName.placeholder = 'Pokémon TCG name…';
+    var qNum = document.createElement('input');
+    qNum.placeholder = '#';
+    var qBtn = document.createElement('button');
+    qBtn.type = 'button';
+    qBtn.textContent = 'Look up';
+    searchRow.appendChild(qName);
+    searchRow.appendChild(qNum);
+    searchRow.appendChild(qBtn);
+    searchWrap.appendChild(searchRow);
+    var statusEl = document.createElement('div');
+    statusEl.className = 'ptcg-status';
+    searchWrap.appendChild(statusEl);
+    var resultsEl = document.createElement('div');
+    resultsEl.className = 'ptcg-results';
+    searchWrap.appendChild(resultsEl);
+
+    qBtn.onclick = function () {
+      var nm = qName.value.trim();
+      if (!nm) { qName.focus(); return; }
+      statusEl.textContent = 'Searching…';
+      resultsEl.innerHTML = '';
+      var q = 'name:"' + nm.replace(/"/g, '') + '"';
+      if (qNum.value.trim()) q += ' number:' + qNum.value.trim();
+      var url = 'https://api.pokemontcg.io/v2/cards?q=' + encodeURIComponent(q) + '&pageSize=8';
+      fetch(url).then(function (res) {
+        if (!res.ok) throw new Error('bad response');
+        return res.json();
+      }).then(function (data) {
+        var cards = data.data || [];
+        if (!cards.length) { statusEl.textContent = 'No matches found.'; return; }
+        statusEl.textContent = cards.length + ' match(es) — click one to fill in:';
+        cards.forEach(function (c) {
+          var r = document.createElement('button');
+          r.type = 'button';
+          r.className = 'ptcg-result';
+          var img = c.images && c.images.small ? '<img src="' + c.images.small + '">' : '';
+          var setName = c.set ? c.set.name : '';
+          r.innerHTML = img + '<span>' + c.name + ' — ' + setName + ' #' + c.number + '</span>';
+          r.onclick = function () {
+            nameInput.value = c.name;
+            noteInput.value = (setName ? setName + ' ' : '') + '#' + c.number;
+            pendingImage = c.images ? c.images.small : null;
+          };
+          resultsEl.appendChild(r);
+        });
+      }).catch(function () {
+        statusEl.textContent = 'Search unavailable in this hosted preview (browser sandbox blocks the API call). Download the file and open it directly in your browser for live lookups — manual entry above still works here.';
+      });
+    };
+
+    form.appendChild(searchWrap);
+
+    var actions = document.createElement('div');
+    actions.className = 'edit-actions';
+    var saveBtn = document.createElement('button');
+    saveBtn.className = 'save-btn';
+    saveBtn.textContent = 'Save';
+    saveBtn.onclick = function () {
+      var name = nameInput.value.trim();
+      if (!name) { nameInput.focus(); return; }
+      page.slots[idx] = { name: name, tag: tagSelect.value, note: noteInput.value.trim(), image: pendingImage };
+      editingIndex = null;
+      save();
+      renderGrid();
+    };
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'cancel-btn';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = function () { editingIndex = null; renderGrid(); };
+    actions.appendChild(saveBtn);
+    actions.appendChild(cancelBtn);
+    form.appendChild(actions);
+
+    setTimeout(function () { nameInput.focus(); }, 0);
+    return form;
+  }
+
+  document.getElementById('clearPageBtn').onclick = function () {
+    if (!confirm('Clear every pocket on "' + currentPage().name + '"?')) return;
+    var page = currentPage();
+    page.slots = page.slots.map(function () { return null; });
+    editingIndex = null;
+    save();
+    renderGrid();
+  };
+
+  function renderAll() {
+    renderTypeToggle();
+    renderPageTabs();
+    renderGrid();
+  }
+
+  renderAll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+name: Desktop
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install (Linux build deps for better-sqlite3)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y python3 make g++
+      - run: npm ci
+      - run: npm run build
+      # Unsigned artifacts: no code-signing/notarization secrets configured.
+      - run: npm run dist -w @bindarr/desktop-electron
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bindarr-${{ matrix.os }}
+          path: |
+            apps/desktop-electron/dist/*.dmg
+            apps/desktop-electron/dist/*.exe
+            apps/desktop-electron/dist/*.AppImage
+            apps/desktop-electron/dist/*.deb
+          if-no-files-found: warn

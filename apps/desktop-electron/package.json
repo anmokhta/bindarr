@@ -1,0 +1,27 @@
+{
+  "name": "@bindarr/desktop-electron",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Bindarr desktop app (Electron shell around the local Bindarr server)",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "prepare-backend": "node scripts/prepare-backend.mjs",
+    "dist": "node scripts/prepare-backend.mjs && electron-builder",
+    "dist:dir": "node scripts/prepare-backend.mjs && electron-builder --dir"
+  },
+  "devDependencies": {
+    "@electron/rebuild": "^3.7.1",
+    "electron": "35.7.5",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "com.bindarr.app",
+    "productName": "Bindarr",
+    "files": ["main.cjs", "package.json"],
+    "extraResources": [{ "from": ".backend", "to": "backend", "filter": ["**/*"] }],
+    "mac": { "category": "public.app-category-productivity", "target": ["dmg"] },
+    "win": { "target": ["nsis"] },
+    "linux": { "category": "Utility", "target": ["AppImage", "deb"] }
+  }
+}

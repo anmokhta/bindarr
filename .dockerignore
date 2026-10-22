@@ -1,0 +1,13 @@
+node_modules
+**/node_modules
+**/dist
+data
+*.db
+.git
+.gitignore
+.env
+Binder Page Planner.html
+apps/desktop-*
+.github
+coverage
+**/*.tsbuildinfo
