@@ -13,10 +13,12 @@
     "start": "npm run start -w @bindarr/server",
     "typecheck": "npm run build -w @bindarr/shared && npm run typecheck -w @bindarr/shared && npm run typecheck -w @bindarr/server && npm run typecheck -w @bindarr/web",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "desktop:dev": "npm run build && npm run start -w @bindarr/desktop-electron",
     "desktop:dist": "npm run build && npm run dist -w @bindarr/desktop-electron"
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "concurrently": "^9.1.2",
     "typescript": "^5.8.3",
     "vitest": "^3.1.3"

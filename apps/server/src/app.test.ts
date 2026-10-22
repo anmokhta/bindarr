@@ -29,4 +29,47 @@ describe("server API", () => {
       await app.close();
     }
   });
+
+  it("lookup retries upstream failures, then serves the cached result", async () => {
+    let calls = 0;
+    let failAll = false;
+    const flakyFetch = (async () => {
+      calls++;
+      if (failAll) return new Response(null, { status: 502 });
+      if (calls < 3) return new Response(null, { status: 500 });
+      return Response.json({
+        data: [{ id: "basep-1", name: "Pikachu", number: "1", set: { name: "Wizards Black Star Promos" }, images: { small: "https://img/1.png" } }],
+      });
+    }) as typeof fetch;
+    const app = await buildApp({ databasePath: ":memory:", tcgFetch: flakyFetch });
+    try {
+      const first = await app.inject({ method: "GET", url: "/api/lookup?name=Pikachu" });
+      expect(first.statusCode).toBe(200);
+      expect(first.json().cards[0]).toMatchObject({ name: "Pikachu", setName: "Wizards Black Star Promos", imageSmall: "https://img/1.png" });
+      expect(first.json().cached).toBe(false);
+      expect(calls).toBe(3);
+
+      failAll = true;
+      const stale = await app.inject({ method: "GET", url: "/api/lookup?name=Pikachu" });
+      expect(stale.statusCode).toBe(200);
+      expect(stale.json().cached).toBe(true);
+      expect(stale.json().cards[0].name).toBe("Pikachu");
+    } finally {
+      await app.close();
+    }
+
+    // Upstream fully down on a fresh app sharing no DB would 502; with the
+    // same in-memory DB gone, instead verify 502 + missing-name handling.
+    const downFetch = (async () => new Response(null, { status: 502 })) as typeof fetch;
+    const app2 = await buildApp({ databasePath: ":memory:", tcgFetch: downFetch });
+    try {
+      const down = await app2.inject({ method: "GET", url: "/api/lookup?name=Pikachu" });
+      expect(down.statusCode).toBe(502);
+      expect(down.json().error).toContain("unavailable");
+      const noName = await app2.inject({ method: "GET", url: "/api/lookup" });
+      expect(noName.statusCode).toBe(400);
+    } finally {
+      await app2.close();
+    }
+  }, 20_000);
 });

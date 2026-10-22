@@ -1,22 +1,17 @@
 import { useState } from "react";
 import { TAGS, type CardSlot } from "@bindarr/shared";
-import PocketEditor from "./PocketEditor.js";
 
 export default function Pocket({
   card,
-  editing,
+  isEditing,
   onEdit,
-  onSave,
-  onCancelEdit,
   onClear,
   onSwap,
   index,
 }: {
   card: CardSlot | null;
-  editing: boolean;
+  isEditing: boolean;
   onEdit: () => void;
-  onSave: (card: CardSlot) => void;
-  onCancelEdit: () => void;
   onClear: () => void;
   onSwap: (fromIndex: number) => void;
   index: number;
@@ -24,10 +19,17 @@ export default function Pocket({
   const [dragOver, setDragOver] = useState(false);
   const tagInfo = card ? TAGS[card.tag] : TAGS.none;
 
+  // Lookup fills note as "Set Name #number" — display it as "Set Name, #number".
+  const metaLine = (() => {
+    if (!card?.note) return "";
+    const m = card.note.match(/^(.*?)\s*#(\S+)$/);
+    return m ? `${m[1]}, #${m[2]}` : card.note;
+  })();
+
   return (
     <div
-      className={`pocket${card ? " filled" : ""}${dragOver ? " dragover" : ""}`}
-      draggable={!!card && !editing}
+      className={`pocket${card ? " filled" : ""}${card?.image ? " has-image" : ""}${dragOver ? " dragover" : ""}${isEditing ? " editing" : ""}`}
+      draggable={!!card}
       onClick={onEdit}
       onDragStart={(e) => e.dataTransfer.setData("text/plain", String(index))}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -39,15 +41,24 @@ export default function Pocket({
         if (!Number.isNaN(from)) onSwap(from);
       }}
     >
-      {editing ? (
-        <PocketEditor card={card} onSave={onSave} onCancel={onCancelEdit} />
-      ) : card ? (
+      {card ? (
         <>
           {tagInfo.color && <div className="tag-bar" style={{ background: tagInfo.color }} />}
-          {card.image && <img className="card-thumb" src={card.image} alt={card.name} />}
-          <div className="card-name">{card.name}</div>
-          {card.note && <div className="card-note">{card.note}</div>}
-          <div className="card-tag">{tagInfo.label !== "No tag" ? tagInfo.label : ""}</div>
+          {card.image ? (
+            <>
+              <img className="card-full" src={card.image} alt={card.name} />
+              <div className="card-overlay">
+                <div className="card-overlay-name">{card.name}</div>
+                {metaLine && <div className="card-overlay-meta">{metaLine}</div>}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="card-name">{card.name}</div>
+              {card.note && <div className="card-note">{card.note}</div>}
+              <div className="card-tag">{tagInfo.label !== "No tag" ? tagInfo.label : ""}</div>
+            </>
+          )}
           <button
             className="remove-btn"
             title="Clear pocket"

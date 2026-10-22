@@ -12,3 +12,5 @@ apps/desktop-electron/.backend/
 apps/desktop-tauri/src-tauri/target/
 coverage/
 *.tsbuildinfo
+test-results/
+playwright-report/
