@@ -73,6 +73,38 @@ describe("server API", () => {
     }
   }, 20_000);
 
+  it("import dedupes on apiId and name/set/number, and logs lookup calls", async () => {
+    const fakeFetch = (async () => Response.json({
+      data: [{ id: "base1-58", name: "Pikachu", number: "58", set: { name: "Base" }, images: { small: "https://img/p.png" }, artist: "Mitsuhiro Arita" }],
+    })) as typeof fetch;
+    const app = await buildApp({ databasePath: ":memory:", tcgFetch: fakeFetch });
+    try {
+      const items = [
+        { game: "pokemon", apiId: "base1-58", name: "Pikachu", set: "Base", number: "58", want: true, have: false },
+        { game: "pokemon", name: "Pikachu", set: "Base", number: "58" },
+      ];
+      const first = await app.inject({ method: "POST", url: "/api/bank/import", payload: { items } });
+      expect(first.json()).toEqual({ created: 1, updated: 1 });
+      const second = await app.inject({ method: "POST", url: "/api/bank/import", payload: { items } });
+      expect(second.json()).toEqual({ created: 0, updated: 2 });
+      const bank = await app.inject({ method: "GET", url: "/api/bank?game=pokemon" });
+      expect(bank.json().items).toHaveLength(1);
+
+      await app.inject({ method: "GET", url: "/api/lookup?name=Pikachu" });
+      const stats = await app.inject({ method: "GET", url: "/api/calls/stats" });
+      expect(stats.json().windows["1h"]).toBe(1);
+      expect(stats.json().windows["30d"]).toBe(1);
+      expect(stats.json().byGame.pokemon).toBe(1);
+      expect(stats.json().byProvider.pokemontcg).toBe(1);
+      const calls = await app.inject({ method: "GET", url: "/api/calls?range=24h" });
+      expect(calls.json().calls[0]).toMatchObject({ status: "success", game: "pokemon", provider: "pokemontcg" });
+      expect(calls.json().calls[0].call).toContain("Pikachu");
+      expect(calls.json().calls[0].day).toBeTruthy();
+    } finally {
+      await app.close();
+    }
+  });
+
   it("bank CRUD and settings round-trip", async () => {
     const app = await buildApp({ databasePath: ":memory:" });
     try {

@@ -4,7 +4,13 @@
 
 Plan which cards go in which binder pockets (3×3 / 9-pocket and 2×2 / 4-pocket
 pages) before physically sleeving them. Includes Pokémon TCG lookup via
-pokemontcg.io, drag-to-swap pockets, and automatic saving.
+pokemontcg.io, drag-to-swap pockets, and automatic saving. Cards live in one
+bank with independent have/want flags — Bank (`/bank`) is the have view,
+Wishlist (`/wishlist`) the want view (wishlist cards render in black & white
+in binders until marked obtained). Both views import/export JSON/CSV.
+External API calls are logged and viewable under Settings → Calls
+(`/settings?tab=calls`); rows are kept indefinitely for now — if the table
+grows large, prune entries older than 90 days.
 
 Bindarr is a self-hosted web app: a Fastify + SQLite server serves the
 React frontend and stores all binder data server-side, so you can use it from

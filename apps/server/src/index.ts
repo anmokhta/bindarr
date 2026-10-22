@@ -60,6 +60,16 @@ export function openDb(databasePath: string) {
       id INTEGER PRIMARY KEY CHECK (id = 1),
       data TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS api_calls (
+      id TEXT PRIMARY KEY,
+      created_at TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      game TEXT NOT NULL,
+      call TEXT NOT NULL,
+      status TEXT NOT NULL,
+      http_status INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_api_calls_created ON api_calls (created_at);
   `);
   return db;
 }
@@ -85,6 +95,12 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   // served stale when the upstream is down).
   const tcgFetch = opts.tcgFetch ?? fetch;
   const tcgApiKey = opts.tcgApiKey ?? process.env.POKEMONTCG_API_KEY;
+
+  /** Log one external API call. Reused by future providers (artist search). */
+  const logApiCall = (entry: { provider: string; game: string; call: string; status: "success" | "error" | "cache-hit"; httpStatus?: number | null }) => {
+    db.prepare("INSERT INTO api_calls (id, created_at, provider, game, call, status, http_status) VALUES (?, ?, ?, ?, ?, ?, ?)")
+      .run(randomUUID(), new Date().toISOString(), entry.provider, entry.game, entry.call, entry.status, entry.httpStatus ?? null);
+  };
 
   app.get("/api/lookup", async (req, reply) => {
     const { name, number } = (req.query ?? {}) as { name?: string; number?: string };
@@ -116,6 +132,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
           signal: AbortSignal.timeout(12_000),
         });
         lastStatus = res.status;
+        logApiCall({ provider: "pokemontcg", game: "pokemon", call: `cards?q=${q}`, status: res.ok ? "success" : "error", httpStatus: res.status });
         if (!res.ok) continue;
         const data = (await res.json()) as { data?: any[] };
         const cards: TcgCardResult[] = (data.data ?? []).map((c) => ({
@@ -135,11 +152,15 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
         return { cards, cached: false };
       } catch {
         lastStatus = 0;
+        logApiCall({ provider: "pokemontcg", game: "pokemon", call: `cards?q=${q}`, status: "error" });
       }
     }
 
     const stale = cachedRow();
-    if (stale) return { cards: JSON.parse(stale.response) as TcgCardResult[], cached: true };
+    if (stale) {
+      logApiCall({ provider: "pokemontcg", game: "pokemon", call: `cards?q=${q}`, status: "cache-hit" });
+      return { cards: JSON.parse(stale.response) as TcgCardResult[], cached: true };
+    }
     return reply.code(502).send({
       error: `Pokémon TCG API is unavailable right now${lastStatus ? ` (HTTP ${lastStatus})` : ""} — try again in a moment`,
     });
@@ -181,6 +202,71 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     const result = db.prepare("DELETE FROM bank_items WHERE id = ?").run(id);
     if (!result.changes) return reply.code(404).send({ error: "Bank item not found" });
     return { ok: true };
+  });
+
+  app.post("/api/bank/import", async (req, reply) => {
+    const body = (req.body ?? {}) as { items?: unknown[] };
+    if (!Array.isArray(body.items)) return reply.code(400).send({ error: "Expected { items: [...] }" });
+    const existing = (db.prepare("SELECT data FROM bank_items").all() as { data: string }[])
+      .map((r) => JSON.parse(r.data) as BankItem);
+    let created = 0;
+    let updated = 0;
+    for (const raw of body.items) {
+      const parsed = parseBankItem({ ...(raw as Record<string, unknown>), id: ((raw as Record<string, unknown>).id as string) || randomUUID() });
+      if (!parsed) continue;
+      const match = existing.find((e) =>
+        (parsed.apiId && e.game === parsed.game && e.apiId === parsed.apiId) ||
+        (e.game === parsed.game && e.name.toLowerCase() === parsed.name.toLowerCase() && e.set === parsed.set && e.number === parsed.number),
+      );
+      if (match) {
+        const merged: BankItem = { ...match, ...parsed, id: match.id };
+        db.prepare("UPDATE bank_items SET game = ?, data = ?, updated_at = ? WHERE id = ?")
+          .run(merged.game, JSON.stringify(merged), new Date().toISOString(), match.id);
+        Object.assign(match, merged);
+        updated++;
+      } else {
+        db.prepare("INSERT INTO bank_items (id, game, data, updated_at) VALUES (?, ?, ?, ?)")
+          .run(parsed.id, parsed.game, JSON.stringify(parsed), new Date().toISOString());
+        existing.push(parsed);
+        created++;
+      }
+    }
+    return { created, updated };
+  });
+
+  // --- API call tracking -------------------------------------------------------
+  const CALL_WINDOWS: Record<string, number> = {
+    "1h": 3_600_000, "12h": 43_200_000, "24h": 86_400_000,
+    "3d": 259_200_000, "7d": 604_800_000, "30d": 2_592_000_000,
+  };
+
+  app.get("/api/calls/stats", async () => {
+    const rows = db.prepare("SELECT created_at, provider, game FROM api_calls").all() as { created_at: string; provider: string; game: string }[];
+    const now = Date.now();
+    const windows: Record<string, number> = {};
+    for (const [key, ms] of Object.entries(CALL_WINDOWS)) {
+      windows[key] = rows.filter((r) => now - new Date(r.created_at).getTime() <= ms).length;
+    }
+    const tally = (key: "game" | "provider") => {
+      const out: Record<string, number> = {};
+      for (const r of rows) out[r[key]] = (out[r[key]] ?? 0) + 1;
+      return out;
+    };
+    return { windows, byGame: tally("game"), byProvider: tally("provider"), total: rows.length };
+  });
+
+  app.get("/api/calls", async (req) => {
+    const { range } = (req.query ?? {}) as { range?: string };
+    const ms = CALL_WINDOWS[range ?? "24h"] ?? CALL_WINDOWS["24h"];
+    const since = new Date(Date.now() - ms).toISOString();
+    const rows = db.prepare("SELECT * FROM api_calls WHERE created_at >= ? ORDER BY created_at DESC LIMIT 200")
+      .all(since) as { id: string; created_at: string; provider: string; game: string; call: string; status: string; http_status: number | null }[];
+    return {
+      calls: rows.map((r) => ({
+        id: r.id, createdAt: r.created_at, day: r.created_at.slice(0, 10),
+        provider: r.provider, game: r.game, call: r.call, status: r.status, httpStatus: r.http_status,
+      })),
+    };
   });
 
   // --- App settings ------------------------------------------------------------

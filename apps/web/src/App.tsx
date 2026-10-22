@@ -28,9 +28,31 @@ import PocketEditor from "./components/PocketEditor.js";
 import BankPage from "./components/BankPage.js";
 import BindersPage from "./components/BindersPage.js";
 import SettingsPage, { applyTheme, initialTheme } from "./components/SettingsPage.js";
+import ArtistSearchPage from "./components/ArtistSearchPage.js";
+import { previousRoute, useRoute, type Route } from "./router.js";
 
 type SaveStatus = "loading" | "saved" | "saving" | "error";
-type View = "planner" | "bank" | "binders" | "settings";
+type View = "planner" | "bank" | "wishlist" | "binders" | "artist" | "settings";
+
+const VIEW_PATHS: Record<View, string> = {
+  planner: "/",
+  bank: "/bank",
+  wishlist: "/wishlist",
+  binders: "/binders",
+  artist: "/artist-search",
+  settings: "/settings",
+};
+
+function viewForRoute(route: Route): View {
+  switch (route) {
+    case "/bank": return "bank";
+    case "/wishlist": return "wishlist";
+    case "/binders": return "binders";
+    case "/artist-search": return "artist";
+    case "/settings": return "settings";
+    default: return "planner";
+  }
+}
 
 export default function App() {
   const [state, setState] = useState<PlannerState>(defaultState);
@@ -38,7 +60,10 @@ export default function App() {
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [legacyAvailable, setLegacyAvailable] = useState<PlannerState | null>(null);
   const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
-  const [view, setView] = useState<View>("planner");
+  const [route, navigate] = useRoute();
+  const view = viewForRoute(route);
+  const go = (v: View) => navigate(VIEW_PATHS[v]);
+  const settingsBack = () => navigate(previousRoute());
   const [bankItems, setBankItems] = useState<BankItem[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings());
   const [placingItem, setPlacingItem] = useState<BankItem | null>(null);
@@ -147,16 +172,24 @@ export default function App() {
     });
   }
 
+  if (view === "settings") {
+    return (
+      <div className="wrap settings-standalone">
+        <SettingsPage settings={appSettings} onSaveSettings={handleSaveSettings} onBack={settingsBack} />
+      </div>
+    );
+  }
+
   return (
     <div className="wrap">
       <header>
         <div className="topbar">
           <h1>Bindarr</h1>
           <button
-            className={`settings-btn${view === "settings" ? " active" : ""}`}
+            className="settings-btn"
             aria-label="Settings"
             title="Settings"
-            onClick={() => setView("settings")}
+            onClick={() => go("settings")}
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
               <circle cx="12" cy="12" r="3" />
@@ -175,11 +208,11 @@ export default function App() {
           {status === "error" && "Could not reach the server — changes are not being saved"}
         </div>
         <nav className="main-nav" aria-label="Main">
-          {([["planner", "Planner"], ["bank", "Bank"], ["binders", "Binders"]] as [View, string][]).map(([key, label]) => (
+          {([["planner", "Planner"], ["bank", "Bank"], ["wishlist", "Wishlist"], ["binders", "Binders"], ["artist", "Artist Search"]] as [View, string][]).map(([key, label]) => (
             <button
               key={key}
               className={`nav-btn${view === key ? " active" : ""}`}
-              onClick={() => setView(key)}
+              onClick={() => go(key)}
             >
               {label}
             </button>
@@ -187,25 +220,26 @@ export default function App() {
         </nav>
       </header>
 
-      {view === "bank" && (
+      {(view === "bank" || view === "wishlist") && (
         <BankPage
+          mode={view === "wishlist" ? "wishlist" : "bank"}
           items={bankItems}
           visibleBanks={appSettings.visibleGames}
           onCreate={handleCreateBankItem}
           onUpdate={handleUpdateBankItem}
           onDelete={handleDeleteBankItem}
-          onPlace={(item) => { setPlacingItem(item); setView("planner"); }}
+          onPlace={(item) => { setPlacingItem(item); go("planner"); }}
+          onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
+          onImported={async () => { setBankItems(await fetchBank()); }}
         />
       )}
       {view === "binders" && (
         <BindersPage
           state={state}
-          onOpen={(type) => { mutate((d) => { d.activeType = type; }); setView("planner"); }}
+          onOpen={(type) => { mutate((d) => { d.activeType = type; }); go("planner"); }}
         />
       )}
-      {view === "settings" && (
-        <SettingsPage settings={appSettings} onSaveSettings={handleSaveSettings} />
-      )}
+      {view === "artist" && <ArtistSearchPage />}
       {view === "planner" && (
       <>
 
@@ -234,7 +268,7 @@ export default function App() {
             {pages.length * BINDER_TYPES[state.activeType].count} pockets filled
           </p>
         </div>
-        <button className="switch-binder-btn" onClick={() => setView("binders")}>
+        <button className="switch-binder-btn" onClick={() => go("binders")}>
           Switch binder
         </button>
       </div>
@@ -326,6 +360,9 @@ export default function App() {
               key={idx}
               index={idx}
               card={card}
+              wishlistOnly={(() => { const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined; return !!linked && linked.want && !linked.have; })()}
+              artist={card?.bankId ? (bankItems.find((i) => i.id === card.bankId)?.artist ?? null) : null}
+              onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
               isEditing={editingIndex === idx}
               onEdit={() => {
                 if (placingItem) {
@@ -386,6 +423,7 @@ export default function App() {
               bankItems={bankItems}
               visibleBanks={appSettings.visibleGames}
               onCreateBankItem={handleCreateBankItem}
+              onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
             />
             {page.slots[editingIndex] && (
               <button

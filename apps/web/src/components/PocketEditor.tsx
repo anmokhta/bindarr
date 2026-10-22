@@ -12,6 +12,7 @@ export default function PocketEditor({
   bankItems,
   visibleBanks,
   onCreateBankItem,
+  onArtist,
 }: {
   card: CardSlot | null;
   onSave: (card: CardSlot) => void;
@@ -19,6 +20,7 @@ export default function PocketEditor({
   bankItems: BankItem[];
   visibleBanks: string[];
   onCreateBankItem: (payload: BankPayload) => Promise<BankItem>;
+  onArtist?: (name: string) => void;
 }) {
   const [tab, setTab] = useState<"bank" | "new">("new");
   const [name, setName] = useState(card?.name ?? "");
@@ -152,10 +154,15 @@ export default function PocketEditor({
             {status && <div className="ptcg-status">{status}</div>}
             <div className="ptcg-results">
               {results.map((c) => (
-                <button type="button" key={c.id} className="ptcg-result" onClick={() => pickResult(c)}>
-                  {c.imageSmall && <img src={c.imageSmall} alt="" />}
-                  <span>{c.name} — {c.setName} #{c.number}</span>
-                </button>
+                <span key={c.id} className="ptcg-result-row">
+                  <button type="button" className="ptcg-result" onClick={() => pickResult(c)}>
+                    {c.imageSmall && <img src={c.imageSmall} alt="" />}
+                    <span>{c.name} — {c.setName} #{c.number}</span>
+                  </button>
+                  {c.artist && onArtist && (
+                    <button type="button" className="artist-link" onClick={() => onArtist(c.artist!)}>More by {c.artist}</button>
+                  )}
+                </span>
               ))}
             </div>
           </div>

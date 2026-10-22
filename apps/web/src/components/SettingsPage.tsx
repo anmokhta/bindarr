@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { GAMES, type AppSettings, type GameId } from "@bindarr/shared";
+import { fetchCalls, fetchCallStats, type ApiCallRow } from "../api.js";
 
 type Theme = "auto" | "light" | "dark";
+type SettingsTab = "general" | "calls";
 
 export function applyTheme(theme: Theme) {
   if (theme === "auto") delete document.documentElement.dataset.theme;
@@ -17,16 +19,84 @@ export function initialTheme(): Theme {
   return "auto";
 }
 
+const WINDOWS: { key: string; label: string }[] = [
+  { key: "1h", label: "Last hour" },
+  { key: "12h", label: "Last 12 hours" },
+  { key: "24h", label: "Last day" },
+  { key: "3d", label: "Last 3 days" },
+  { key: "7d", label: "Last week" },
+  { key: "30d", label: "Last month" },
+];
+
+function CallsTab() {
+  const [range, setRange] = useState("24h");
+  const [stats, setStats] = useState<{ windows: Record<string, number>; byGame: Record<string, number>; byProvider: Record<string, number> } | null>(null);
+  const [calls, setCalls] = useState<ApiCallRow[]>([]);
+
+  useEffect(() => { fetchCallStats().then(setStats).catch(() => setStats(null)); }, []);
+  useEffect(() => { fetchCalls(range).then(setCalls).catch(() => setCalls([])); }, [range]);
+
+  return (
+    <div>
+      <p className="settings-text">
+        External API calls made by this server (card lookups today; artist search will log here too).
+      </p>
+      <div className="settings-tabs" role="tablist" aria-label="Time range">
+        {WINDOWS.map((w) => (
+          <button key={w.key} className={`game-tab${range === w.key ? " active" : ""}`} onClick={() => setRange(w.key)}>
+            {w.label}: {stats?.windows[w.key] ?? "—"}
+          </button>
+        ))}
+      </div>
+      {stats && (
+        <p className="settings-text">
+          By game: {Object.entries(stats.byGame).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}
+          {"  "}By provider: {Object.entries(stats.byProvider).map(([k, v]) => `${k} ${v}`).join(" · ") || "—"}
+        </p>
+      )}
+      {calls.length === 0 ? (
+        <p className="bank-empty">No API calls in this window yet — card lookups will show up here.</p>
+      ) : (
+        <table className="calls-table">
+          <thead><tr><th>Time</th><th>Day</th><th>Call</th><th>Game</th><th>Provider</th><th>Status</th></tr></thead>
+          <tbody>
+            {calls.map((c) => (
+              <tr key={c.id}>
+                <td>{new Date(c.createdAt).toLocaleTimeString()}</td>
+                <td>{new Date(c.createdAt).toLocaleDateString()}</td>
+                <td><code>{c.call}</code></td>
+                <td>{c.game}</td>
+                <td>{c.provider}</td>
+                <td>{c.status}{c.httpStatus ? ` (${c.httpStatus})` : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPage({
   settings,
   onSaveSettings,
+  onBack,
 }: {
   settings?: AppSettings;
   onSaveSettings?: (next: AppSettings) => Promise<void>;
+  onBack?: () => void;
 }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [server, setServer] = useState<string>("Checking…");
+  const [tab, setTab] = useState<SettingsTab>(() =>
+    new URLSearchParams(window.location.search).get("tab") === "calls" ? "calls" : "general",
+  );
   const visibleGames = settings?.visibleGames ?? ["pokemon", "misc"];
+
+  function selectTab(next: SettingsTab) {
+    setTab(next);
+    window.history.replaceState({}, "", next === "calls" ? "/settings?tab=calls" : "/settings");
+  }
 
   function toggleGame(id: string, visible: boolean) {
     if (!settings || !onSaveSettings) return;
@@ -46,9 +116,29 @@ export default function SettingsPage({
   }, []);
 
   return (
-    <section className="page-section">
-      <h2 className="page-title">Settings</h2>
+    <section className="page-section settings-page">
+      <div className="settings-heading-row">
+        {onBack && (
+          <button className="settings-back" aria-label="Back" onClick={onBack}>←</button>
+        )}
+        <h2 className="page-title">Settings</h2>
+        {onBack && (
+          <button className="settings-btn active" aria-label="Settings" title="Back to previous page" onClick={onBack} style={{ marginLeft: "auto" }}>
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+            </svg>
+          </button>
+        )}
+      </div>
 
+      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+        <button role="tab" aria-selected={tab === "general"} className={`game-tab${tab === "general" ? " active" : ""}`} onClick={() => selectTab("general")}>General</button>
+        <button role="tab" aria-selected={tab === "calls"} className={`game-tab${tab === "calls" ? " active" : ""}`} onClick={() => selectTab("calls")}>Calls</button>
+      </div>
+
+      {tab === "calls" ? <CallsTab /> : (
+      <>
       <div className="settings-group">
         <h3>Appearance</h3>
         <label className="settings-row">
@@ -116,6 +206,8 @@ export default function SettingsPage({
           home network, or put a reverse proxy with authentication in front of it.
         </p>
       </div>
+      </>
+      )}
     </section>
   );
 }

@@ -71,6 +71,40 @@ export async function deleteBankItem(id: string): Promise<void> {
   if (!res.ok) throw new Error(`DELETE /api/bank failed: ${res.status}`);
 }
 
+export async function importBankItems(items: Record<string, unknown>[]): Promise<{ created: number; updated: number }> {
+  const res = await fetch("/api/bank/import", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
+  if (!res.ok) throw new Error(`Import failed (${res.status})`);
+  return res.json() as Promise<{ created: number; updated: number }>;
+}
+
+export interface ApiCallRow {
+  id: string;
+  createdAt: string;
+  day: string;
+  provider: string;
+  game: string;
+  call: string;
+  status: string;
+  httpStatus: number | null;
+}
+
+export async function fetchCallStats(): Promise<{ windows: Record<string, number>; byGame: Record<string, number>; byProvider: Record<string, number> }> {
+  const res = await fetch("/api/calls/stats");
+  if (!res.ok) throw new Error(`Calls stats failed (${res.status})`);
+  return res.json();
+}
+
+export async function fetchCalls(range: string): Promise<ApiCallRow[]> {
+  const res = await fetch(`/api/calls?range=${encodeURIComponent(range)}`);
+  if (!res.ok) throw new Error(`Calls failed (${res.status})`);
+  const data = (await res.json()) as { calls: ApiCallRow[] };
+  return data.calls;
+}
+
 export async function fetchSettings(): Promise<AppSettings> {
   const res = await fetch("/api/settings");
   if (!res.ok) throw new Error(`GET /api/settings failed: ${res.status}`);

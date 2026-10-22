@@ -5,14 +5,20 @@ import { lookupCards, type TcgCard } from "../api.js";
 export default function BankItemForm({
   game,
   initial,
+  defaultHave = true,
+  defaultWant = false,
   onSubmit,
   onCancel,
 }: {
   game: string;
   initial?: BankItem | null;
+  defaultHave?: boolean;
+  defaultWant?: boolean;
   onSubmit: (payload: Record<string, unknown>) => Promise<void>;
   onCancel: () => void;
 }) {
+  const [have, setHave] = useState(initial?.have ?? defaultHave);
+  const [want, setWant] = useState(initial?.want ?? defaultWant);
   const [name, setName] = useState(initial?.name ?? "");
   const [set, setSet] = useState(initial?.set ?? "");
   const [number, setNumber] = useState(initial?.number ?? "");
@@ -62,6 +68,8 @@ export default function BankItemForm({
       await onSubmit({
         ...(initial ? { id: initial.id } : {}),
         game,
+        have,
+        want,
         apiId,
         name: name.trim(),
         set: set.trim(),
@@ -126,6 +134,10 @@ export default function BankItemForm({
           </div>
         </>
       )}
+      <div className="form-row checkbox-row">
+        <label className="check-label"><input type="checkbox" checked={have} onChange={(e) => setHave(e.target.checked)} /> I have it</label>
+        <label className="check-label"><input type="checkbox" checked={want} onChange={(e) => setWant(e.target.checked)} /> I want it</label>
+      </div>
       <input placeholder="Collection (your mini-set)" value={collection} onChange={(e) => setCollection(e.target.value)} />
       <input placeholder="Tags, comma separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
       <input placeholder="Image URL" value={image} onChange={(e) => setImage(e.target.value)} />

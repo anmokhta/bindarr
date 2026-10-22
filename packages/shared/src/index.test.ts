@@ -33,6 +33,13 @@ describe("bank items & settings", () => {
     const slot = bankItemToSlot(item);
     expect(slot).toMatchObject({ name: "Pikachu", note: "Base #58", bankId: "1" });
   });
+  it("defaults old items to have=true want=false and allows both", () => {
+    const legacy = parseBankItem({ id: "0", game: "pokemon", name: "Old Card" })!;
+    expect(legacy.have).toBe(true);
+    expect(legacy.want).toBe(false);
+    const both = parseBankItem({ id: "3", game: "pokemon", name: "Dupe", have: true, want: true })!;
+    expect(both.have && both.want).toBe(true);
+  });
   it("parses a misc item with extras", () => {
     const item = parseBankItem({ id: "2", game: "misc", name: "Cool sleeve back", appliesToGame: "pokemon", year: 1997 })!;
     expect(item.appliesToGame).toBe("pokemon");

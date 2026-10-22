@@ -4,6 +4,9 @@ import { TAGS, type CardSlot } from "@bindarr/shared";
 export default function Pocket({
   card,
   isEditing,
+  wishlistOnly = false,
+  artist = null,
+  onArtist,
   onEdit,
   onClear,
   onSwap,
@@ -12,6 +15,9 @@ export default function Pocket({
 }: {
   card: CardSlot | null;
   isEditing: boolean;
+  wishlistOnly?: boolean;
+  artist?: string | null;
+  onArtist?: (name: string) => void;
   onEdit: () => void;
   onClear: () => void;
   onSwap: (fromIndex: number) => void;
@@ -30,7 +36,7 @@ export default function Pocket({
 
   return (
     <div
-      className={`pocket${card ? " filled" : ""}${card?.image ? " has-image" : ""}${dragOver ? " dragover" : ""}${isEditing ? " editing" : ""}`}
+      className={`pocket${card ? " filled" : ""}${card?.image ? " has-image" : ""}${wishlistOnly ? " wishlist-only" : ""}${dragOver ? " dragover" : ""}${isEditing ? " editing" : ""}`}
       draggable={!!card}
       onClick={onEdit}
       onDragStart={(e) => e.dataTransfer.setData("text/plain", String(index))}
@@ -54,6 +60,16 @@ export default function Pocket({
               <div className="card-overlay">
                 <div className="card-overlay-name">{card.name}</div>
                 {metaLine && <div className="card-overlay-meta">{metaLine}</div>}
+                {wishlistOnly && <div className="card-overlay-meta wishlist-badge">Wishlist</div>}
+                {artist && onArtist && (
+                  <button
+                    type="button"
+                    className="card-overlay-artist"
+                    onClick={(e) => { e.stopPropagation(); onArtist(artist); }}
+                  >
+                    More by {artist}
+                  </button>
+                )}
               </div>
             </>
           ) : (

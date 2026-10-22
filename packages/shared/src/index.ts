@@ -104,6 +104,8 @@ export const BANK_LABELS: Record<string, string> = {
 export const bankItemSchema = z.object({
   id: z.string().min(1),
   game: z.string().min(1), // GameId or "misc"
+  have: z.boolean().default(true),
+  want: z.boolean().default(false),
   apiId: z.string().nullable().default(null),
   name: z.string().min(1),
   set: z.string().default(""),

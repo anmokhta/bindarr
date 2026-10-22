@@ -85,8 +85,13 @@ export default function BankPicker({
   const [game, setGame] = useState(banks[0] ?? "pokemon");
   const [filters, setFilters] = useState<BankFilters>(emptyFilters);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [flagFilter, setFlagFilter] = useState<"all" | "have" | "want">("all");
 
-  const inGame = useMemo(() => items.filter((i) => i.game === game), [items, game]);
+  const inGameAll = useMemo(() => items.filter((i) => i.game === game), [items, game]);
+  const inGame = useMemo(
+    () => inGameAll.filter((i) => flagFilter === "all" || (flagFilter === "have" ? i.have : i.want)),
+    [inGameAll, flagFilter],
+  );
   const visible = useMemo(() => filterBankItems(inGame, filters), [inGame, filters]);
   const selected = visible.find((i) => i.id === selectedId) ?? inGame.find((i) => i.id === selectedId);
 
@@ -99,13 +104,20 @@ export default function BankPicker({
           </button>
         ))}
       </div>
+      <div className="bank-flag-toggle" role="group" aria-label="Have or wishlist">
+        {(["all", "have", "want"] as const).map((f) => (
+          <button key={f} className={`game-tab${flagFilter === f ? " active" : ""}`} onClick={() => setFlagFilter(f)}>
+            {f === "all" ? "All" : f === "have" ? "Have" : "Wishlist"}
+          </button>
+        ))}
+      </div>
       <BankFiltersBar items={inGame} filters={filters} onChange={setFilters} />
       <div className="bank-picker-list">
         {visible.length === 0 && <p className="bank-empty">No cards match — try another filter, or add one in the New tab.</p>}
         {visible.map((item) => (
           <div
             key={item.id}
-            className={`bank-picker-item${selectedId === item.id ? " selected" : ""}`}
+            className={`bank-picker-item${selectedId === item.id ? " selected" : ""}${item.want && !item.have ? " wishlist-only" : ""}`}
             draggable
             onDragStart={(e) => {
               e.dataTransfer.setData("application/x-bindarr-bank", item.id);
