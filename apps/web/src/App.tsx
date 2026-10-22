@@ -101,7 +101,7 @@ export default function App() {
     <div className="wrap">
       <header>
         <div className="topbar">
-          <h1>Binder Page Planner</h1>
+          <h1>Bindarr</h1>
           <button
             className={`settings-btn${view === "settings" ? " active" : ""}`}
             aria-label="Settings"
@@ -115,8 +115,8 @@ export default function App() {
           </button>
         </div>
         <p>
-          Rough out card placement before you buy or re-sleeve pages. Switch binder types, add
-          pages, and drag cards between pockets. Everything saves automatically to your Bindarr server.
+          Card management and binder organizing. Rough out card placement before you buy or
+          re-sleeve pages — everything saves automatically to your Bindarr server.
         </p>
         <div className="save-status" role="status">
           {status === "loading" && "Loading…"}

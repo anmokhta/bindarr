@@ -2,7 +2,8 @@ import { expect, test } from "@playwright/test";
 
 test("planner loads, edits a pocket in the sidebar, renames a page, and persists", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Binder Page Planner" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Bindarr", exact: true })).toBeVisible();
+  await expect(page.getByText(/Card management and binder organizing/)).toBeVisible();
   await expect(page.locator(".pocket")).toHaveCount(9);
 
   // Edit opens a sidebar (desktop) / sheet, not an in-pocket form.

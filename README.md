@@ -1,4 +1,6 @@
-# Bindarr — Binder Page Planner
+# Bindarr
+
+**Card management and binder organizing.**
 
 Plan which cards go in which binder pockets (3×3 / 9-pocket and 2×2 / 4-pocket
 pages) before physically sleeving them. Includes Pokémon TCG lookup via
