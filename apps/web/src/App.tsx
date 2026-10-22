@@ -4,8 +4,8 @@ import {
   STORAGE_KEY,
   blankPage,
   defaultState,
+  makeBinder,
   parsePlannerState,
-  type BinderType,
   bankItemToSlot,
   defaultSettings,
   type AppSettings,
@@ -149,8 +149,11 @@ export default function App() {
     }, 400);
   }, []);
 
-  const pages = state.pages[state.activeType];
-  const pageIdx = state.activePageIndex[state.activeType];
+  const binder = state.binders.find((b) => b.id === state.activeBinderId && !b.archivedAt)
+    ?? state.binders.find((b) => !b.archivedAt)
+    ?? state.binders[0];
+  const pages = binder.pages;
+  const pageIdx = Math.min(binder.activePageIndex, pages.length - 1);
   const page = pages[pageIdx];
 
   function mutate(fn: (draft: PlannerState) => void) {
@@ -161,13 +164,17 @@ export default function App() {
   }
 
   function setSlot(idx: number, card: CardSlot | null) {
-    mutate((d) => { d.pages[d.activeType][d.activePageIndex[d.activeType]].slots[idx] = card; });
+    mutate((d) => {
+      const b = d.binders.find((x) => x.id === d.activeBinderId)!;
+      b.pages[b.activePageIndex].slots[idx] = card;
+    });
   }
 
   function swapSlots(from: number, to: number) {
     if (from === to) return;
     mutate((d) => {
-      const p = d.pages[d.activeType][d.activePageIndex[d.activeType]];
+      const b = d.binders.find((x) => x.id === d.activeBinderId)!;
+      const p = b.pages[b.activePageIndex];
       [p.slots[from], p.slots[to]] = [p.slots[to], p.slots[from]];
     });
   }
@@ -236,7 +243,34 @@ export default function App() {
       {view === "binders" && (
         <BindersPage
           state={state}
-          onOpen={(type) => { mutate((d) => { d.activeType = type; }); go("planner"); }}
+          actions={{
+            onOpen: (id) => { mutate((d) => { d.activeBinderId = id; }); go("planner"); },
+            onCreate: (name, layout, count) => {
+              const binder = makeBinder(crypto.randomUUID(), name, layout, count);
+              mutate((d) => { d.binders.push(binder); d.activeBinderId = binder.id; });
+              go("planner");
+            },
+            onRename: (id, name) => mutate((d) => { const b = d.binders.find((x) => x.id === id); if (b) b.name = name; }),
+            onDuplicate: (id) => mutate((d) => {
+              const src = d.binders.find((x) => x.id === id);
+              if (!src) return;
+              const copy = structuredClone(src);
+              copy.id = crypto.randomUUID();
+              copy.name = `Copy of ${src.name}`;
+              copy.archivedAt = null;
+              d.binders.push(copy);
+            }),
+            onArchive: (id) => mutate((d) => {
+              const unarchived = d.binders.filter((x) => !x.archivedAt);
+              if (unarchived.length <= 1) return;
+              const b = d.binders.find((x) => x.id === id);
+              if (!b) return;
+              b.archivedAt = new Date().toISOString();
+              if (d.activeBinderId === id) d.activeBinderId = d.binders.find((x) => !x.archivedAt && x.id !== id)!.id;
+            }),
+            onRestore: (id) => mutate((d) => { const b = d.binders.find((x) => x.id === id); if (b) b.archivedAt = null; }),
+            onDelete: (id) => mutate((d) => { d.binders = d.binders.filter((x) => x.id !== id); }),
+          }}
         />
       )}
       {view === "artist" && <ArtistSearchPage />}
@@ -259,13 +293,11 @@ export default function App() {
       <div className="main">
       <div className="current-binder">
         <div>
-          <h2 className="current-binder-name">
-            {state.activeType === "3x3" ? "9-Pocket Binder" : "4-Pocket Binder"}
-          </h2>
+          <h2 className="current-binder-name">{binder.name}</h2>
           <p className="current-binder-meta">
-            {BINDER_TYPES[state.activeType].sub} · {pages.length} page{pages.length === 1 ? "" : "s"} ·{" "}
+            {BINDER_TYPES[binder.layout].sub} · {pages.length} page{pages.length === 1 ? "" : "s"} ·{" "}
             {pages.reduce((n, p) => n + p.slots.filter(Boolean).length, 0)} /{" "}
-            {pages.length * BINDER_TYPES[state.activeType].count} pockets filled
+            {pages.length * BINDER_TYPES[binder.layout].count} pockets filled
           </p>
         </div>
         <button className="switch-binder-btn" onClick={() => go("binders")}>
@@ -280,26 +312,13 @@ export default function App() {
           <button onClick={() => setPlacingItem(null)}>Cancel (Esc)</button>
         </div>
       )}
-      <div className="type-toggle">
-        {(Object.keys(BINDER_TYPES) as BinderType[]).map((key) => (
-          <button
-            key={key}
-            className={`type-btn${state.activeType === key ? " active" : ""}`}
-            onClick={() => mutate((d) => { d.activeType = key; })}
-          >
-            <strong>{BINDER_TYPES[key].label}</strong>
-            <span>{BINDER_TYPES[key].sub}</span>
-          </button>
-        ))}
-      </div>
-
       <div className="page-tabs">
         {pages.map((p, idx) => (
           <div
             key={idx}
             className={`page-tab${idx === pageIdx ? " active" : ""}`}
             title="Double-click to rename"
-            onClick={() => mutate((d) => { d.activePageIndex[d.activeType] = idx; })}
+            onClick={() => mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.activePageIndex = idx; })}
             onDoubleClick={(e) => { e.stopPropagation(); setRenamingIndex(idx); }}
           >
             {renamingIndex === idx ? (
@@ -312,7 +331,7 @@ export default function App() {
                 onBlur={(e) => {
                   const name = e.target.value.trim();
                   setRenamingIndex(null);
-                  if (name && name !== p.name) mutate((d) => { d.pages[d.activeType][idx].name = name; });
+                  if (name && name !== p.name) mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.pages[idx].name = name; });
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") (e.target as HTMLInputElement).blur();
@@ -328,9 +347,9 @@ export default function App() {
           className="add-page-btn"
           onClick={() =>
             mutate((d) => {
-              const t = d.activeType;
-              d.pages[t].push(blankPage(BINDER_TYPES[t].count, d.pages[t].length + 1));
-              d.activePageIndex[t] = d.pages[t].length - 1;
+              const b = d.binders.find((x) => x.id === d.activeBinderId)!;
+              b.pages.push(blankPage(BINDER_TYPES[b.layout].count, b.pages.length + 1));
+              b.activePageIndex = b.pages.length - 1;
             })
           }
         >
@@ -342,9 +361,9 @@ export default function App() {
             onClick={() => {
               if (!window.confirm(`Delete "${page.name}"? This can't be undone.`)) return;
               mutate((d) => {
-                const t = d.activeType;
-                d.pages[t].splice(d.activePageIndex[t], 1);
-                d.activePageIndex[t] = Math.max(0, d.activePageIndex[t] - 1);
+                const b = d.binders.find((x) => x.id === d.activeBinderId)!;
+                b.pages.splice(b.activePageIndex, 1);
+                b.activePageIndex = Math.max(0, b.activePageIndex - 1);
               });
             }}
           >
@@ -354,7 +373,7 @@ export default function App() {
       </div>
 
       <div className="binder-page">
-        <div className={`grid ${BINDER_TYPES[state.activeType].gridClass}`}>
+        <div className={`grid ${BINDER_TYPES[binder.layout].gridClass}`}>
           {page.slots.map((card, idx) => (
             <Pocket
               key={idx}
@@ -392,7 +411,8 @@ export default function App() {
             onClick={() => {
               if (!window.confirm(`Clear every pocket on "${page.name}"?`)) return;
               mutate((d) => {
-                const p = d.pages[d.activeType][d.activePageIndex[d.activeType]];
+                const b = d.binders.find((x) => x.id === d.activeBinderId)!;
+                const p = b.pages[b.activePageIndex];
                 p.slots = p.slots.map(() => null);
               });
             }}
@@ -416,7 +436,7 @@ export default function App() {
             </p>
             {/* Key remounts the form when switching pockets. */}
             <PocketEditor
-              key={`${state.activeType}-${pageIdx}-${editingIndex}`}
+              key={`${binder.id}-${pageIdx}-${editingIndex}`}
               card={page.slots[editingIndex]}
               onSave={(c) => setSlot(editingIndex, c)}
               onCancel={() => setEditingIndex(null)}

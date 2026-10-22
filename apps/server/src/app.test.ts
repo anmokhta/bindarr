@@ -15,13 +15,21 @@ describe("server API", () => {
       expect(initial.json().updatedAt).toBeNull();
 
       const modified = defaultState();
-      modified.pages["3x3"][0].slots[0] = { name: "Pikachu", tag: "showcase", note: "Base #58", image: null };
+      modified.binders[0].pages[0].slots[0] = { name: "Pikachu", tag: "showcase", note: "Base #58", image: null };
       const put = await app.inject({ method: "PUT", url: "/api/state", payload: { state: modified } });
       expect(put.statusCode).toBe(200);
       expect(put.json().updatedAt).toBeTruthy();
 
       const after = await app.inject({ method: "GET", url: "/api/state" });
-      expect(after.json().state.pages["3x3"][0].slots[0].name).toBe("Pikachu");
+      expect(after.json().state.binders[0].pages[0].slots[0].name).toBe("Pikachu");
+
+      // Legacy-shaped state migrates to named binders on write.
+      const legacyPut = await app.inject({
+        method: "PUT", url: "/api/state",
+        payload: { state: { activeType: "3x3", activePageIndex: { "3x3": 0, "2x2": 0 }, pages: { "3x3": [{ name: "P", slots: [] }], "2x2": [{ name: "Q", slots: [] }] } } },
+      });
+      expect(legacyPut.statusCode).toBe(200);
+      expect(legacyPut.json().state.binders.map((b: { name: string }) => b.name)).toEqual(["9-Pocket Binder", "4-Pocket Binder"]);
 
       const bad = await app.inject({ method: "PUT", url: "/api/state", payload: { state: { nope: 1 } } });
       expect(bad.statusCode).toBe(400);

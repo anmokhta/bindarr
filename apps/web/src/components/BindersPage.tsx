@@ -1,53 +1,123 @@
 import { useState } from "react";
-import { BINDER_TYPES, type BinderType, type PlannerState } from "@bindarr/shared";
+import { BINDER_TYPES, type Binder, type BinderType, type PlannerState } from "@bindarr/shared";
 
-function stats(state: PlannerState, type: BinderType) {
-  const pages = state.pages[type];
-  const total = pages.length * BINDER_TYPES[type].count;
-  const filled = pages.reduce((n, p) => n + p.slots.filter(Boolean).length, 0);
-  return { pages: pages.length, total, filled };
+function stats(binder: Binder) {
+  const total = binder.pages.length * BINDER_TYPES[binder.layout].count;
+  const filled = binder.pages.reduce((n, p) => n + p.slots.filter(Boolean).length, 0);
+  return { pages: binder.pages.length, total, filled };
+}
+
+export interface BinderActions {
+  onOpen: (id: string) => void;
+  onCreate: (name: string, layout: BinderType, pageCount: number) => void;
+  onRename: (id: string, name: string) => void;
+  onDuplicate: (id: string) => void;
+  onArchive: (id: string) => void;
+  onRestore: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 export default function BindersPage({
   state,
-  onOpen,
+  actions,
 }: {
   state: PlannerState;
-  onOpen: (type: BinderType) => void;
+  actions: BinderActions;
 }) {
   const [name, setName] = useState("");
-  const [type, setType] = useState<BinderType>("3x3");
+  const [layout, setLayout] = useState<BinderType>("3x3");
   const [pageCount, setPageCount] = useState(30);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+
+  const active = state.binders.filter((b) => !b.archivedAt);
+  const archived = state.binders.filter((b) => b.archivedAt);
+
+  function renderCard(binder: Binder) {
+    const s = stats(binder);
+    const pct = s.total ? Math.round((s.filled / s.total) * 100) : 0;
+    const isCurrent = binder.id === state.activeBinderId && !binder.archivedAt;
+    return (
+      <article key={binder.id} className={`binder-card${isCurrent ? " current" : ""}`} aria-current={isCurrent || undefined}>
+        <div className="binder-spine" aria-hidden />
+        <div className="binder-info">
+          {renamingId === binder.id ? (
+            <input
+              className="binder-rename"
+              defaultValue={binder.name}
+              autoFocus
+              aria-label="Binder name"
+              onFocus={(e) => e.target.select()}
+              onBlur={(e) => {
+                const next = e.target.value.trim();
+                setRenamingId(null);
+                if (next && next !== binder.name) actions.onRename(binder.id, next);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                if (e.key === "Escape") setRenamingId(null);
+              }}
+            />
+          ) : (
+            <h3>{binder.name}</h3>
+          )}
+          {isCurrent && <span className="current-badge">Current binder</span>}
+          <p className="binder-meta">
+            {BINDER_TYPES[binder.layout].sub} · {s.pages} page{s.pages === 1 ? "" : "s"}
+          </p>
+          <p className="binder-meta">
+            {s.filled} / {s.total} pockets filled ({pct}%)
+          </p>
+          <div className="fill-track"><div className="fill-bar" style={{ width: `${pct}%` }} /></div>
+          <div className="binder-card-actions">
+            {binder.archivedAt ? (
+              <>
+                <button className="primary-btn" onClick={() => actions.onRestore(binder.id)}>Restore</button>
+                <button
+                  onClick={() => {
+                    if (window.confirm(`Permanently delete "${binder.name}" and all its pages? This can't be undone.`)) actions.onDelete(binder.id);
+                  }}
+                >
+                  Permanently delete
+                </button>
+              </>
+            ) : (
+              <>
+                <button className="primary-btn" disabled={isCurrent} onClick={() => actions.onOpen(binder.id)}>
+                  {isCurrent ? "Currently open" : "Select & open"}
+                </button>
+                <button onClick={() => setRenamingId(binder.id)}>Rename</button>
+                <button onClick={() => actions.onDuplicate(binder.id)}>Duplicate</button>
+                <button
+                  disabled={active.length <= 1}
+                  title={active.length <= 1 ? "Archive is unavailable for your last binder" : undefined}
+                  onClick={() => actions.onArchive(binder.id)}
+                >
+                  Archive
+                </button>
+              </>
+            )}
+          </div>
+          {active.length <= 1 && !binder.archivedAt && (
+            <p className="skeleton-note">This is your last binder — create another before archiving it.</p>
+          )}
+        </div>
+      </article>
+    );
+  }
 
   return (
     <section className="page-section">
       <h2 className="page-title">Binders</h2>
       <p className="page-sub">Pick a binder to open it in the planner.</p>
 
-      <div className="binder-list">
-        {(Object.keys(BINDER_TYPES) as BinderType[]).map((key) => {
-          const s = stats(state, key);
-          const pct = s.total ? Math.round((s.filled / s.total) * 100) : 0;
-          return (
-            <article key={key} className="binder-card">
-              <div className="binder-spine" aria-hidden />
-              <div className="binder-info">
-                <h3>{key === "3x3" ? "9-Pocket Binder" : "4-Pocket Binder"}</h3>
-                <p className="binder-meta">
-                  {BINDER_TYPES[key].sub} · {s.pages} page{s.pages === 1 ? "" : "s"}
-                </p>
-                <p className="binder-meta">
-                  {s.filled} / {s.total} pockets filled ({pct}%)
-                </p>
-                <div className="fill-track"><div className="fill-bar" style={{ width: `${pct}%` }} /></div>
-                <button className="primary-btn" onClick={() => onOpen(key)}>
-                  {state.activeType === key ? "Open in planner" : "Select & open"}
-                </button>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+      <div className="binder-list">{active.map(renderCard)}</div>
+
+      {archived.length > 0 && (
+        <>
+          <h3 className="archived-heading">Archived binders</h3>
+          <div className="binder-list archived">{archived.map(renderCard)}</div>
+        </>
+      )}
 
       <div className="create-binder">
         <h3>Create a new binder</h3>
@@ -58,9 +128,10 @@ export default function BindersPage({
           </label>
           <label>
             Pocket type
-            <select value={type} onChange={(e) => setType(e.target.value as BinderType)}>
+            <select value={layout} onChange={(e) => setLayout(e.target.value as BinderType)}>
               <option value="3x3">9-pocket (3 × 3)</option>
               <option value="2x2">4-pocket (2 × 2)</option>
+              <option value="4x3">12-pocket (4 × 3)</option>
             </select>
           </label>
           <label>
@@ -74,13 +145,15 @@ export default function BindersPage({
             />
           </label>
         </div>
-        <button className="primary-btn" disabled title="Available with multiple-binder support">
+        <button
+          className="primary-btn"
+          onClick={() => {
+            actions.onCreate(name.trim() || "Untitled binder", layout, Math.min(200, Math.max(1, pageCount || 1)));
+            setName("");
+          }}
+        >
           Create binder
         </button>
-        <p className="skeleton-note">
-          Named binders with a preset page count arrive with the multiple-binder
-          data model — this form is the planned layout.
-        </p>
       </div>
     </section>
   );

@@ -31,18 +31,15 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
   await expect(page.locator(".pocket").first()).toContainText(/Pikachu/i);
   await expect(page.locator(".page-tab").first()).toHaveText("Favorites");
 
-  // Binder-type switch has its own page set, and the planner names the binder.
+  // Switching binders via the Binders page gives each binder its own pages.
   await expect(page.locator(".current-binder-name")).toHaveText("9-Pocket Binder");
-  await page.getByRole("button", { name: /4-Pocket Pages/ }).click();
-  await expect(page.locator(".pocket")).toHaveCount(4);
-  await expect(page.locator(".current-binder-name")).toHaveText("4-Pocket Binder");
-
-  // App shell: Binders page (select existing), Bank skeleton, Settings gear.
   await page.getByRole("button", { name: "Binders", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Binders" })).toBeVisible();
   await expect(page.getByText("Create a new binder")).toBeVisible();
-  await page.locator(".binder-card").nth(1).getByRole("button", { name: /open/i }).click();
+  await page.locator(".binder-card", { has: page.getByRole("heading", { name: "4-Pocket Binder", exact: true }) })
+    .getByRole("button", { name: "Select & open" }).click();
   await expect(page.locator(".pocket")).toHaveCount(4);
+  await expect(page.locator(".current-binder-name")).toHaveText("4-Pocket Binder");
 
   await page.getByRole("button", { name: "Bank", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Card Bank" })).toBeVisible();

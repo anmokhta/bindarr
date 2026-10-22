@@ -60,6 +60,15 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .skeleton-note { font-size: 12.5px; color: var(--ink-soft); margin-top: 14px; max-width: 62ch; }
 .binder-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-bottom: 22px; }
 .binder-card { display: flex; gap: 0; background: var(--paper-raised); border: 1px solid var(--pocket-border); border-radius: 8px; overflow: hidden; }
+.binder-card.current { border: 2px solid var(--gold); box-shadow: 0 0 0 2px color-mix(in srgb, var(--gold) 25%, transparent); }
+.binder-card.current .binder-spine { background: var(--gold); flex-basis: 20px; }
+.current-badge { display: inline-block; font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--vinyl); background: color-mix(in srgb, var(--gold) 30%, transparent); border: 1px solid var(--gold); border-radius: 999px; padding: 2px 8px; margin-bottom: 6px; }
+.binder-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.binder-card-actions button { font-family: 'IBM Plex Mono', monospace; font-size: 11px; padding: 6px 10px; border-radius: 4px; border: 1px solid var(--pocket-border); background: transparent; color: var(--ink); cursor: pointer; }
+.binder-card-actions button:disabled { opacity: .45; cursor: not-allowed; }
+.binder-rename { font-family: 'Fraunces', serif; font-size: 19px; width: 100%; border: none; background: transparent; color: var(--ink); outline: none; margin-bottom: 6px; }
+.archived-heading { font-family: 'Fraunces', serif; margin: 22px 0 10px; }
+.binder-list.archived { opacity: .75; }
 .binder-spine { flex: 0 0 14px; background: var(--vinyl); }
 .binder-info { padding: 16px; flex: 1; }
 .binder-info h3 { font-family: 'Fraunces', serif; font-size: 19px; margin: 0 0 6px; }
@@ -149,6 +158,8 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .grid { display: grid; gap: 12px; }
 .grid.g9 { grid-template-columns: repeat(3, 1fr); }
 .grid.g4 { grid-template-columns: repeat(2, 1fr); }
+.grid.g12 { grid-template-columns: repeat(4, 1fr); }
+@media (max-width: 560px) { .grid.g12 { grid-template-columns: repeat(3, 1fr); } }
 .pocket { aspect-ratio: 2.5 / 3.5; border: 1.5px dashed var(--pocket-border); border-radius: 6px; background: var(--pocket-empty); display: flex; flex-direction: column; align-items: center; justify-content: center; cursor: pointer; position: relative; padding: 8px; color: var(--ink-soft); text-align: center; transition: border-color 0.12s ease; overflow: hidden; }
 .pocket:hover { border-color: var(--vinyl-light); }
 .pocket .plus { font-size: 22px; font-family: 'Fraunces', serif; }

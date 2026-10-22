@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import { bankItemToSlot, defaultSettings, defaultState, parseAppSettings, parseBankItem, parsePlannerState } from "./index.js";
 
 describe("defaultState", () => {
-  it("creates one blank page per binder type with correct slot counts", () => {
+  it("creates the two starter binders with correct slot counts", () => {
     const s = defaultState();
-    expect(s.pages["3x3"][0].slots).toHaveLength(9);
-    expect(s.pages["2x2"][0].slots).toHaveLength(4);
-    expect(s.pages["3x3"][0].slots.every((x) => x === null)).toBe(true);
+    expect(s.binders).toHaveLength(2);
+    expect(s.binders[0].pages[0].slots).toHaveLength(9);
+    expect(s.binders[1].pages[0].slots).toHaveLength(4);
+    expect(s.activeBinderId).toBe(s.binders[0].id);
   });
 });
 
@@ -20,8 +21,33 @@ describe("parsePlannerState", () => {
   });
   it("accepts slots with and without bankId", () => {
     const s = defaultState();
-    s.pages["3x3"][0].slots[0] = { name: "Pikachu", tag: "none", note: "", image: null, bankId: "abc" };
-    expect(parsePlannerState(s)?.pages["3x3"][0].slots[0]).toMatchObject({ bankId: "abc" });
+    s.binders[0].pages[0].slots[0] = { name: "Pikachu", tag: "none", note: "", image: null, bankId: "abc" };
+    expect(parsePlannerState(s)?.binders[0].pages[0].slots[0]).toMatchObject({ bankId: "abc" });
+  });
+  it("migrates the legacy two-bucket state, preserving pages and selection", () => {
+    const legacy = {
+      activeType: "2x2",
+      activePageIndex: { "3x3": 0, "2x2": 0 },
+      pages: {
+        "3x3": [{ name: "Main", slots: [{ name: "Pikachu", tag: "none", note: "", image: null }] }],
+        "2x2": [{ name: "Thick", slots: [null, null] }],
+      },
+    };
+    const parsed = parsePlannerState(legacy)!;
+    expect(parsed.binders.map((b) => b.name)).toEqual(["9-Pocket Binder", "4-Pocket Binder"]);
+    expect(parsed.binders[0].pages[0].slots).toHaveLength(9);
+    expect(parsed.binders[0].pages[0].slots[0]).toMatchObject({ name: "Pikachu" });
+    expect(parsed.binders[1].pages[0].slots).toHaveLength(4);
+    expect(parsed.activeBinderId).toBe("legacy-2x2");
+  });
+  it("normalizes 4x3 binders to 12 slots and repairs a bad active id", () => {
+    const parsed = parsePlannerState({
+      activeBinderId: "missing",
+      binders: [{ id: "b1", name: "Big", layout: "4x3", pages: [{ name: "P1", slots: [null] }], activePageIndex: 5, archivedAt: null }],
+    })!;
+    expect(parsed.binders[0].pages[0].slots).toHaveLength(12);
+    expect(parsed.binders[0].activePageIndex).toBe(0);
+    expect(parsed.activeBinderId).toBe("b1");
   });
 });
 
@@ -55,10 +81,10 @@ describe("bank items & settings", () => {
 describe("parsePlannerState padding", () => {
   it("pads short slot arrays and clamps page index", () => {
     const s = defaultState();
-    s.pages["3x3"][0].slots = [null];
-    s.activePageIndex["3x3"] = 99;
+    s.binders[0].pages[0].slots = [null];
+    s.binders[0].activePageIndex = 99;
     const parsed = parsePlannerState(s)!;
-    expect(parsed.pages["3x3"][0].slots).toHaveLength(9);
-    expect(parsed.activePageIndex["3x3"]).toBe(0);
+    expect(parsed.binders[0].pages[0].slots).toHaveLength(9);
+    expect(parsed.binders[0].activePageIndex).toBe(0);
   });
 });
