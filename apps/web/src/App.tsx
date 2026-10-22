@@ -6,10 +6,23 @@ import {
   defaultState,
   parsePlannerState,
   type BinderType,
+  bankItemToSlot,
+  defaultSettings,
+  type AppSettings,
+  type BankItem,
   type CardSlot,
   type PlannerState,
 } from "@bindarr/shared";
-import { fetchState, saveState } from "./api.js";
+import {
+  createBankItem,
+  deleteBankItem,
+  fetchBank,
+  fetchSettings,
+  fetchState,
+  saveSettings,
+  saveState,
+  updateBankItem,
+} from "./api.js";
 import Pocket from "./components/Pocket.js";
 import PocketEditor from "./components/PocketEditor.js";
 import BankPage from "./components/BankPage.js";
@@ -26,8 +39,45 @@ export default function App() {
   const [legacyAvailable, setLegacyAvailable] = useState<PlannerState | null>(null);
   const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
   const [view, setView] = useState<View>("planner");
+  const [bankItems, setBankItems] = useState<BankItem[]>([]);
+  const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings());
+  const [placingItem, setPlacingItem] = useState<BankItem | null>(null);
 
   useEffect(() => { applyTheme(initialTheme()); }, []);
+
+  useEffect(() => {
+    fetchBank().then(setBankItems).catch(() => { /* bank unavailable — planner still works */ });
+    fetchSettings().then(setAppSettings).catch(() => { /* defaults */ });
+  }, []);
+
+  // Esc cancels click-to-place mode.
+  useEffect(() => {
+    if (!placingItem) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setPlacingItem(null); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [placingItem]);
+
+  async function handleCreateBankItem(payload: Record<string, unknown>): Promise<BankItem> {
+    const item = await createBankItem(payload);
+    setBankItems((prev) => [item, ...prev.filter((i) => i.id !== item.id)]);
+    return item;
+  }
+
+  async function handleUpdateBankItem(id: string, payload: Record<string, unknown>): Promise<void> {
+    const item = await updateBankItem(id, payload);
+    setBankItems((prev) => prev.map((i) => (i.id === id ? item : i)));
+  }
+
+  async function handleDeleteBankItem(id: string): Promise<void> {
+    await deleteBankItem(id);
+    setBankItems((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  async function handleSaveSettings(next: AppSettings): Promise<void> {
+    setAppSettings(next);
+    try { setAppSettings(await saveSettings(next)); } catch { /* keep local value */ }
+  }
   const loaded = useRef(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingSave = useRef<PlannerState | null>(null);
@@ -137,14 +187,25 @@ export default function App() {
         </nav>
       </header>
 
-      {view === "bank" && <BankPage />}
+      {view === "bank" && (
+        <BankPage
+          items={bankItems}
+          visibleBanks={appSettings.visibleGames}
+          onCreate={handleCreateBankItem}
+          onUpdate={handleUpdateBankItem}
+          onDelete={handleDeleteBankItem}
+          onPlace={(item) => { setPlacingItem(item); setView("planner"); }}
+        />
+      )}
       {view === "binders" && (
         <BindersPage
           state={state}
           onOpen={(type) => { mutate((d) => { d.activeType = type; }); setView("planner"); }}
         />
       )}
-      {view === "settings" && <SettingsPage />}
+      {view === "settings" && (
+        <SettingsPage settings={appSettings} onSaveSettings={handleSaveSettings} />
+      )}
       {view === "planner" && (
       <>
 
@@ -177,6 +238,14 @@ export default function App() {
           Switch binder
         </button>
       </div>
+      {placingItem && (
+        <div className="placing-banner" role="status">
+          <span>
+            Placing <strong>{placingItem.name}</strong> — click a pocket to fill it.
+          </span>
+          <button onClick={() => setPlacingItem(null)}>Cancel (Esc)</button>
+        </div>
+      )}
       <div className="type-toggle">
         {(Object.keys(BINDER_TYPES) as BinderType[]).map((key) => (
           <button
@@ -258,9 +327,20 @@ export default function App() {
               index={idx}
               card={card}
               isEditing={editingIndex === idx}
-              onEdit={() => setEditingIndex(idx)}
+              onEdit={() => {
+                if (placingItem) {
+                  setSlot(idx, bankItemToSlot(placingItem));
+                  setPlacingItem(null);
+                } else {
+                  setEditingIndex(idx);
+                }
+              }}
               onClear={() => setSlot(idx, null)}
               onSwap={(from) => swapSlots(from, idx)}
+              onBankDrop={(bankItemId) => {
+                const item = bankItems.find((i) => i.id === bankItemId);
+                if (item) setSlot(idx, bankItemToSlot(item));
+              }}
             />
           ))}
         </div>
@@ -303,6 +383,9 @@ export default function App() {
               card={page.slots[editingIndex]}
               onSave={(c) => setSlot(editingIndex, c)}
               onCancel={() => setEditingIndex(null)}
+              bankItems={bankItems}
+              visibleBanks={appSettings.visibleGames}
+              onCreateBankItem={handleCreateBankItem}
             />
             {page.slots[editingIndex] && (
               <button

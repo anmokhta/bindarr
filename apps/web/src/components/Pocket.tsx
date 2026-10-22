@@ -7,6 +7,7 @@ export default function Pocket({
   onEdit,
   onClear,
   onSwap,
+  onBankDrop,
   index,
 }: {
   card: CardSlot | null;
@@ -14,6 +15,7 @@ export default function Pocket({
   onEdit: () => void;
   onClear: () => void;
   onSwap: (fromIndex: number) => void;
+  onBankDrop: (bankItemId: string) => void;
   index: number;
 }) {
   const [dragOver, setDragOver] = useState(false);
@@ -37,6 +39,8 @@ export default function Pocket({
       onDrop={(e) => {
         e.preventDefault();
         setDragOver(false);
+        const bankId = e.dataTransfer.getData("application/x-bindarr-bank");
+        if (bankId) { onBankDrop(bankId); return; }
         const from = Number(e.dataTransfer.getData("text/plain"));
         if (!Number.isNaN(from)) onSwap(from);
       }}

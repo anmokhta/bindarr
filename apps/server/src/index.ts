@@ -4,7 +4,16 @@ import Database from "better-sqlite3";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultState, parsePlannerState, type PlannerState } from "@bindarr/shared";
+import {
+  defaultSettings,
+  defaultState,
+  parseAppSettings,
+  parseBankItem,
+  parsePlannerState,
+  type BankItem,
+  type PlannerState,
+} from "@bindarr/shared";
+import { randomUUID } from "node:crypto";
 
 export interface ServerOptions {
   databasePath?: string;
@@ -21,6 +30,9 @@ export interface TcgCardResult {
   number: string;
   setName: string;
   imageSmall: string | null;
+  artist: string | null;
+  evolvesFrom: string | null;
+  evolvesTo: string[];
 }
 
 export function openDb(databasePath: string) {
@@ -37,6 +49,16 @@ export function openDb(databasePath: string) {
       query TEXT PRIMARY KEY,
       response TEXT NOT NULL,
       fetched_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS bank_items (
+      id TEXT PRIMARY KEY,
+      game TEXT NOT NULL,
+      data TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS app_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      data TEXT NOT NULL
     );
   `);
   return db;
@@ -80,7 +102,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
 
     const url =
       `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}` +
-      `&pageSize=8&select=id,name,number,set,images`;
+      `&pageSize=8&select=id,name,number,set,images,artist,evolvesFrom,evolvesTo`;
     const delays = [0, 600, 1800];
     let lastStatus = 0;
     for (const delay of delays) {
@@ -102,6 +124,9 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
           number: c.number,
           setName: c.set?.name ?? "",
           imageSmall: c.images?.small ?? null,
+          artist: c.artist ?? null,
+          evolvesFrom: c.evolvesFrom ?? null,
+          evolvesTo: Array.isArray(c.evolvesTo) ? c.evolvesTo : [],
         }));
         db.prepare(
           `INSERT INTO lookup_cache (query, response, fetched_at) VALUES (?, ?, ?)
@@ -118,6 +143,59 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     return reply.code(502).send({
       error: `Pokémon TCG API is unavailable right now${lastStatus ? ` (HTTP ${lastStatus})` : ""} — try again in a moment`,
     });
+  });
+
+  // --- Card bank -------------------------------------------------------------
+  app.get("/api/bank", async (req) => {
+    const { game } = (req.query ?? {}) as { game?: string };
+    const rows = (game
+      ? db.prepare("SELECT data FROM bank_items WHERE game = ? ORDER BY updated_at DESC").all(game)
+      : db.prepare("SELECT data FROM bank_items ORDER BY updated_at DESC").all()) as { data: string }[];
+    return { items: rows.map((r) => JSON.parse(r.data)) as BankItem[] };
+  });
+
+  app.post("/api/bank", async (req, reply) => {
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const item = parseBankItem({ ...body, id: typeof body.id === "string" && body.id ? body.id : randomUUID() });
+    if (!item) return reply.code(400).send({ error: "Invalid bank item" });
+    db.prepare(
+      `INSERT INTO bank_items (id, game, data, updated_at) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET game = excluded.game, data = excluded.data, updated_at = excluded.updated_at`,
+    ).run(item.id, item.game, JSON.stringify(item), new Date().toISOString());
+    return { item };
+  });
+
+  app.put("/api/bank/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const item = parseBankItem({ ...((req.body ?? {}) as Record<string, unknown>), id });
+    if (!item) return reply.code(400).send({ error: "Invalid bank item" });
+    const exists = db.prepare("SELECT id FROM bank_items WHERE id = ?").get(id);
+    if (!exists) return reply.code(404).send({ error: "Bank item not found" });
+    db.prepare("UPDATE bank_items SET game = ?, data = ?, updated_at = ? WHERE id = ?")
+      .run(item.game, JSON.stringify(item), new Date().toISOString(), id);
+    return { item };
+  });
+
+  app.delete("/api/bank/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const result = db.prepare("DELETE FROM bank_items WHERE id = ?").run(id);
+    if (!result.changes) return reply.code(404).send({ error: "Bank item not found" });
+    return { ok: true };
+  });
+
+  // --- App settings ------------------------------------------------------------
+  app.get("/api/settings", async () => {
+    const row = db.prepare("SELECT data FROM app_settings WHERE id = 1").get() as { data: string } | undefined;
+    return { settings: row ? parseAppSettings(JSON.parse(row.data)) : defaultSettings() };
+  });
+
+  app.put("/api/settings", async (req) => {
+    const settings = parseAppSettings((req.body as { settings?: unknown })?.settings ?? req.body);
+    db.prepare(
+      `INSERT INTO app_settings (id, data) VALUES (1, ?)
+       ON CONFLICT(id) DO UPDATE SET data = excluded.data`,
+    ).run(JSON.stringify(settings));
+    return { settings };
   });
 
   app.get("/api/state", async () => readState());

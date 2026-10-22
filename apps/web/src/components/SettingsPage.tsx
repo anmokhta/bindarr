@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { GAMES, type AppSettings, type GameId } from "@bindarr/shared";
 
 type Theme = "auto" | "light" | "dark";
 
@@ -16,9 +17,24 @@ export function initialTheme(): Theme {
   return "auto";
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({
+  settings,
+  onSaveSettings,
+}: {
+  settings?: AppSettings;
+  onSaveSettings?: (next: AppSettings) => Promise<void>;
+}) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [server, setServer] = useState<string>("Checking…");
+  const visibleGames = settings?.visibleGames ?? ["pokemon", "misc"];
+
+  function toggleGame(id: string, visible: boolean) {
+    if (!settings || !onSaveSettings) return;
+    const next = visible
+      ? [...new Set([...settings.visibleGames, id])]
+      : settings.visibleGames.filter((g) => g !== id);
+    void onSaveSettings({ visibleGames: next });
+  }
 
   useEffect(() => { applyTheme(theme); }, [theme]);
 
@@ -42,6 +58,33 @@ export default function SettingsPage() {
             <option value="light">Light</option>
             <option value="dark">Dark</option>
           </select>
+        </label>
+      </div>
+
+      <div className="settings-group">
+        <h3>Games</h3>
+        <p className="settings-text">Choose which game banks show up. Each game gets its own bank; only Pokémon has card lookup today.</p>
+        {(Object.entries(GAMES) as [GameId, (typeof GAMES)[GameId]][]).map(([id, game]) => (
+          <label key={id} className="settings-row">
+            <span>
+              {game.label} Bank
+              {!game.implemented && <span className="settings-badge">not yet supported</span>}
+            </span>
+            <input
+              type="checkbox"
+              disabled={!game.implemented}
+              checked={game.implemented && visibleGames.includes(id)}
+              onChange={(e) => toggleGame(id, e.target.checked)}
+            />
+          </label>
+        ))}
+        <label className="settings-row">
+          <span>Misc Bank <span className="settings-badge">sleeves, Carddass &amp; other items</span></span>
+          <input
+            type="checkbox"
+            checked={visibleGames.includes("misc")}
+            onChange={(e) => toggleGame("misc", e.target.checked)}
+          />
         </label>
       </div>
 

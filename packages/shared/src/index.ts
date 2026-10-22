@@ -21,6 +21,7 @@ export const cardSlotSchema = z.object({
   tag: z.enum(["none", "showcase", "set", "trade"]),
   note: z.string(),
   image: z.string().nullable(),
+  bankId: z.string().nullable().optional(),
 });
 export type CardSlot = z.infer<typeof cardSlotSchema>;
 
@@ -78,3 +79,77 @@ export function parsePlannerState(value: unknown): PlannerState | null {
 }
 
 export const STORAGE_KEY = "binderPlannerState_v1";
+
+// --- Games & card bank -------------------------------------------------------
+
+/** TCG games Bindarr knows about. Only Pokémon has lookup support for now. */
+export const GAMES = {
+  pokemon: { label: "Pokémon", implemented: true },
+  magic: { label: "Magic: The Gathering", implemented: false },
+  yugioh: { label: "Yu-Gi-Oh!", implemented: false },
+  lorcana: { label: "Disney Lorcana", implemented: false },
+  onepiece: { label: "One Piece", implemented: false },
+} as const;
+
+export type GameId = keyof typeof GAMES;
+
+/** Which bank an item lives in: a game's bank, or the misc bank. */
+export type BankId = GameId | "misc";
+
+export const BANK_LABELS: Record<string, string> = {
+  ...Object.fromEntries(Object.entries(GAMES).map(([id, g]) => [id, `${g.label} Bank`])),
+  misc: "Misc Bank",
+};
+
+export const bankItemSchema = z.object({
+  id: z.string().min(1),
+  game: z.string().min(1), // GameId or "misc"
+  apiId: z.string().nullable().default(null),
+  name: z.string().min(1),
+  set: z.string().default(""),
+  number: z.string().default(""),
+  artist: z.string().nullable().default(null),
+  evolutionLine: z.string().nullable().default(null),
+  collection: z.string().nullable().default(null),
+  tags: z.array(z.string()).default([]),
+  image: z.string().nullable().default(null),
+  note: z.string().default(""),
+  // Misc-bank extras
+  appliesToGame: z.string().nullable().default(null),
+  maker: z.string().nullable().default(null),
+  year: z.number().int().nullable().default(null),
+  language: z.string().nullable().default(null),
+  condition: z.string().nullable().default(null),
+});
+export type BankItem = z.infer<typeof bankItemSchema>;
+
+export function parseBankItem(value: unknown): BankItem | null {
+  const r = bankItemSchema.safeParse(value);
+  return r.success ? r.data : null;
+}
+
+export const appSettingsSchema = z.object({
+  visibleGames: z.array(z.string()).default(["pokemon", "misc"]),
+});
+export type AppSettings = z.infer<typeof appSettingsSchema>;
+
+export function defaultSettings(): AppSettings {
+  return { visibleGames: ["pokemon", "misc"] };
+}
+
+export function parseAppSettings(value: unknown): AppSettings {
+  const r = appSettingsSchema.safeParse(value);
+  return r.success ? r.data : defaultSettings();
+}
+
+/** Convert a bank item into a pocket slot (snapshot, linked by bankId). */
+export function bankItemToSlot(item: BankItem): CardSlot {
+  const noteParts = [item.set, item.number ? `#${item.number}` : ""].filter(Boolean);
+  return {
+    name: item.name,
+    tag: "none",
+    note: item.note || noteParts.join(" "),
+    image: item.image,
+    bankId: item.id,
+  };
+}

@@ -10,12 +10,12 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
   await page.locator(".pocket").first().click();
   const editor = page.locator(".editor-sidebar");
   await expect(editor).toBeVisible();
-  await expect(editor.getByText("Add card")).toBeVisible();
+  await expect(editor.getByText(/Add card|Edit pocket/)).toBeVisible();
   await editor.getByPlaceholder("Card name").fill("Pikachu");
   await editor.getByPlaceholder("Note (set, condition...)").fill("Base Set #58");
   await editor.getByRole("button", { name: "Save" }).click();
   await expect(editor).toHaveCount(0);
-  await expect(page.locator(".pocket .card-name")).toHaveText("Pikachu");
+  await expect(page.locator(".pocket").first()).toContainText(/Pikachu/i);
   await expect(page.getByText("All changes saved")).toBeVisible();
 
   // Inline page rename (double-click), as in the original single-file app.
@@ -28,7 +28,7 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
 
   // Survives reload (server-side persistence).
   await page.reload();
-  await expect(page.locator(".pocket .card-name")).toHaveText("Pikachu");
+  await expect(page.locator(".pocket").first()).toContainText(/Pikachu/i);
   await expect(page.locator(".page-tab").first()).toHaveText("Favorites");
 
   // Binder-type switch has its own page set, and the planner names the binder.

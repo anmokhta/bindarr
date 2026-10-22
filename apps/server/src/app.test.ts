@@ -72,4 +72,50 @@ describe("server API", () => {
       await app2.close();
     }
   }, 20_000);
+
+  it("bank CRUD and settings round-trip", async () => {
+    const app = await buildApp({ databasePath: ":memory:" });
+    try {
+      const created = await app.inject({
+        method: "POST", url: "/api/bank",
+        payload: { game: "pokemon", name: "Pikachu", set: "Base", number: "58", tags: ["holo"] },
+      });
+      expect(created.statusCode).toBe(200);
+      const id = created.json().item.id;
+      expect(id).toBeTruthy();
+
+      const misc = await app.inject({
+        method: "POST", url: "/api/bank",
+        payload: { game: "misc", name: "Sleeve back", appliesToGame: "pokemon" },
+      });
+      expect(misc.statusCode).toBe(200);
+
+      const pokemon = await app.inject({ method: "GET", url: "/api/bank?game=pokemon" });
+      expect(pokemon.json().items).toHaveLength(1);
+      const all = await app.inject({ method: "GET", url: "/api/bank" });
+      expect(all.json().items).toHaveLength(2);
+
+      const bad = await app.inject({ method: "POST", url: "/api/bank", payload: { game: "pokemon" } });
+      expect(bad.statusCode).toBe(400);
+
+      const updated = await app.inject({
+        method: "PUT", url: `/api/bank/${id}`,
+        payload: { game: "pokemon", name: "Pikachu", set: "Base", number: "58", collection: "Favorites" },
+      });
+      expect(updated.json().item.collection).toBe("Favorites");
+
+      const del = await app.inject({ method: "DELETE", url: `/api/bank/${id}` });
+      expect(del.statusCode).toBe(200);
+      const after = await app.inject({ method: "GET", url: "/api/bank?game=pokemon" });
+      expect(after.json().items).toHaveLength(0);
+
+      const settings = await app.inject({ method: "GET", url: "/api/settings" });
+      expect(settings.json().settings.visibleGames).toEqual(["pokemon", "misc"]);
+      await app.inject({ method: "PUT", url: "/api/settings", payload: { settings: { visibleGames: ["misc"] } } });
+      const settings2 = await app.inject({ method: "GET", url: "/api/settings" });
+      expect(settings2.json().settings.visibleGames).toEqual(["misc"]);
+    } finally {
+      await app.close();
+    }
+  });
 });
