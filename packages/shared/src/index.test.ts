@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bankItemToSlot, defaultSettings, defaultState, parseAppSettings, parseBankItem, parsePlannerState } from "./index.js";
+import { bankItemToSlot, defaultSettings, defaultState, makeBinder, parseAppSettings, parseBankItem, parsePlannerState, resizeBinderSheets, sheetCountOf, spreadCount, spreadIndexForSide, spreadSides, totalSlotsOf } from "./index.js";
 
 describe("defaultState", () => {
   it("creates the two starter binders with correct slot counts", () => {
@@ -46,8 +46,38 @@ describe("parsePlannerState", () => {
       binders: [{ id: "b1", name: "Big", layout: "4x3", pages: [{ name: "P1", slots: [null] }], activePageIndex: 5, archivedAt: null }],
     })!;
     expect(parsed.binders[0].pages[0].slots).toHaveLength(12);
-    expect(parsed.binders[0].activePageIndex).toBe(0);
+    expect(parsed.binders[0].activePageIndex).toBe(1); // clamped after odd-side padding
     expect(parsed.activeBinderId).toBe("b1");
+  });
+});
+
+describe("binder sheets", () => {
+  it("3 sheets in a 2x2 binder = 6 sides and 24 slots", () => {
+    const b = makeBinder("s1", "Sheets", "2x2", 3);
+    expect(sheetCountOf(b)).toBe(3);
+    expect(b.pages).toHaveLength(6);
+    expect(totalSlotsOf(b)).toBe(24);
+  });
+  it("grows in sheet pairs and shrinks only past empty sides", () => {
+    const b = makeBinder("s2", "Grow", "3x3", 1);
+    const grown = resizeBinderSheets(b, 3);
+    expect(grown.ok && grown.binder.pages).toHaveLength(6);
+    const withCard = makeBinder("s3", "Card", "2x2", 3);
+    withCard.pages[5].slots[0] = { name: "Pikachu", tag: "none", note: "", image: null };
+    const blocked = resizeBinderSheets(withCard, 2);
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.blockedPage).toBe("Page 6");
+    expect(withCard.pages).toHaveLength(6);
+    withCard.pages[5].slots[0] = null;
+    const shrunk = resizeBinderSheets(withCard, 2);
+    expect(shrunk.ok && shrunk.binder.pages).toHaveLength(4);
+  });
+  it("groups spreads as [0], [1,2], [3,4]", () => {
+    expect([0, 1, 2, 3, 4, 5].map(spreadIndexForSide)).toEqual([0, 1, 1, 2, 2, 3]);
+    expect(spreadSides(0, 6)).toEqual([0]);
+    expect(spreadSides(1, 6)).toEqual([1, 2]);
+    expect(spreadSides(2, 6)).toEqual([3, 4]);
+    expect(spreadCount(6)).toBe(4);
   });
 });
 
@@ -85,6 +115,6 @@ describe("parsePlannerState padding", () => {
     s.binders[0].activePageIndex = 99;
     const parsed = parsePlannerState(s)!;
     expect(parsed.binders[0].pages[0].slots).toHaveLength(9);
-    expect(parsed.binders[0].activePageIndex).toBe(0);
+    expect(parsed.binders[0].activePageIndex).toBe(1); // two sides per sheet now
   });
 });

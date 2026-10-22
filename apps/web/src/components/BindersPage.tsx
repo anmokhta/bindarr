@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { BINDER_TYPES, type Binder, type BinderType, type PlannerState } from "@bindarr/shared";
+import { BINDER_TYPES, sheetCountOf, totalSlotsOf, type Binder, type BinderType, type PlannerState } from "@bindarr/shared";
 
 function stats(binder: Binder) {
-  const total = binder.pages.length * BINDER_TYPES[binder.layout].count;
+  const total = totalSlotsOf(binder);
   const filled = binder.pages.reduce((n, p) => n + p.slots.filter(Boolean).length, 0);
-  return { pages: binder.pages.length, total, filled };
+  return { sheets: sheetCountOf(binder), sides: binder.pages.length, total, filled };
 }
 
 export interface BinderActions {
   onOpen: (id: string) => void;
-  onCreate: (name: string, layout: BinderType, pageCount: number) => void;
+  onCreate: (name: string, layout: BinderType, sheetCount: number) => void;
+  onResizeSheets: (id: string, sheets: number) => string | null;
   onRename: (id: string, name: string) => void;
   onDuplicate: (id: string) => void;
   onArchive: (id: string) => void;
@@ -26,7 +27,8 @@ export default function BindersPage({
 }) {
   const [name, setName] = useState("");
   const [layout, setLayout] = useState<BinderType>("3x3");
-  const [pageCount, setPageCount] = useState(30);
+  const [sheetCount, setSheetCount] = useState(15);
+  const [resizeNotice, setResizeNotice] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
 
   const active = state.binders.filter((b) => !b.archivedAt);
@@ -62,12 +64,23 @@ export default function BindersPage({
           )}
           {isCurrent && <span className="current-badge">Current binder</span>}
           <p className="binder-meta">
-            {BINDER_TYPES[binder.layout].sub} · {s.pages} page{s.pages === 1 ? "" : "s"}
+            {BINDER_TYPES[binder.layout].sub} · {s.sheets} sheet{s.sheets === 1 ? "" : "s"} · {s.sides} sides
           </p>
           <p className="binder-meta">
             {s.filled} / {s.total} pockets filled ({pct}%)
           </p>
           <div className="fill-track"><div className="fill-bar" style={{ width: `${pct}%` }} /></div>
+          {!binder.archivedAt && (
+            <label className="binder-sheets-control">
+              Sheets
+              <input
+                type="number" min={1} max={200} aria-label={`Sheets for ${binder.name}`}
+                defaultValue={s.sheets} key={`bs-${binder.id}-${s.sheets}`}
+                onBlur={(e) => setResizeNotice(actions.onResizeSheets(binder.id, Number(e.target.value)) ?? "")}
+                onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+              />
+            </label>
+          )}
           <div className="binder-card-actions">
             {binder.archivedAt ? (
               <>
@@ -110,6 +123,7 @@ export default function BindersPage({
       <h2 className="page-title">Binders</h2>
       <p className="page-sub">Pick a binder to open it in the planner.</p>
 
+      {resizeNotice && <p className="sheet-notice" role="alert">{resizeNotice}</p>}
       <div className="binder-list">{active.map(renderCard)}</div>
 
       {archived.length > 0 && (
@@ -135,20 +149,20 @@ export default function BindersPage({
             </select>
           </label>
           <label>
-            Pages
+            Sheets
             <input
               type="number"
               min={1}
               max={200}
-              value={pageCount}
-              onChange={(e) => setPageCount(Number(e.target.value))}
+              value={sheetCount}
+              onChange={(e) => setSheetCount(Number(e.target.value))}
             />
           </label>
         </div>
         <button
           className="primary-btn"
           onClick={() => {
-            actions.onCreate(name.trim() || "Untitled binder", layout, Math.min(200, Math.max(1, pageCount || 1)));
+            actions.onCreate(name.trim() || "Untitled binder", layout, Math.min(200, Math.max(1, sheetCount || 1)));
             setName("");
           }}
         >

@@ -2,9 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BINDER_TYPES,
   STORAGE_KEY,
-  blankPage,
   defaultState,
   makeBinder,
+  resizeBinderSheets,
+  sheetCountOf,
+  spreadCount,
+  spreadIndexForSide,
+  spreadLabel,
+  spreadSides,
+  totalSlotsOf,
   parsePlannerState,
   bankItemToSlot,
   defaultSettings,
@@ -57,7 +63,9 @@ function viewForRoute(route: Route): View {
 export default function App() {
   const [state, setState] = useState<PlannerState>(defaultState);
   const [status, setStatus] = useState<SaveStatus>("loading");
-  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editing, setEditing] = useState<{ page: number; slot: number } | null>(null);
+  const [sheetNotice, setSheetNotice] = useState("");
+  const [pageScale, setPageScale] = useState<number>(() => { try { const v = Number(localStorage.getItem("bindarr-page-scale")); return v >= 60 && v <= 130 ? v : 100; } catch { return 100; } });
   const [legacyAvailable, setLegacyAvailable] = useState<PlannerState | null>(null);
   const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
   const [route, navigate] = useRoute();
@@ -155,28 +163,48 @@ export default function App() {
   const pages = binder.pages;
   const pageIdx = Math.min(binder.activePageIndex, pages.length - 1);
   const page = pages[pageIdx];
+  const spreadIdx = spreadIndexForSide(pageIdx);
+  const visibleSides = spreadSides(spreadIdx, pages.length);
+  const spreads = spreadCount(pages.length);
 
   function mutate(fn: (draft: PlannerState) => void) {
     const draft: PlannerState = structuredClone(state);
     fn(draft);
-    setEditingIndex(null);
+    setEditing(null);
     update(draft);
   }
 
-  function setSlot(idx: number, card: CardSlot | null) {
+  function setSlotAt(sideIdx: number, idx: number, card: CardSlot | null) {
     mutate((d) => {
       const b = d.binders.find((x) => x.id === d.activeBinderId)!;
-      b.pages[b.activePageIndex].slots[idx] = card;
+      b.activePageIndex = sideIdx;
+      b.pages[sideIdx].slots[idx] = card;
     });
   }
 
-  function swapSlots(from: number, to: number) {
-    if (from === to) return;
+  function swapSlots(fromKey: string, toSide: number, to: number) {
+    const [fromSide, from] = fromKey.split(":").map(Number);
+    if (Number.isNaN(fromSide) || Number.isNaN(from) || (fromSide === toSide && from === to)) return;
     mutate((d) => {
       const b = d.binders.find((x) => x.id === d.activeBinderId)!;
-      const p = b.pages[b.activePageIndex];
-      [p.slots[from], p.slots[to]] = [p.slots[to], p.slots[from]];
+      const a = b.pages[fromSide];
+      const c = b.pages[toSide];
+      if (!a || !c) return;
+      [a.slots[from], c.slots[to]] = [c.slots[to], a.slots[from]];
+      b.activePageIndex = toSide;
     });
+  }
+
+  function handleResizeSheets(id: string, sheets: number): string | null {
+    const target = state.binders.find((b) => b.id === id);
+    if (!target) return "Binder not found.";
+    const result = resizeBinderSheets(target, sheets);
+    if (!result.ok) return result.reason;
+    mutate((d) => {
+      const idx = d.binders.findIndex((b) => b.id === id);
+      if (idx >= 0) d.binders[idx] = result.binder;
+    });
+    return null;
   }
 
   if (view === "settings") {
@@ -245,6 +273,7 @@ export default function App() {
           state={state}
           actions={{
             onOpen: (id) => { mutate((d) => { d.activeBinderId = id; }); go("planner"); },
+            onResizeSheets: handleResizeSheets,
             onCreate: (name, layout, count) => {
               const binder = makeBinder(crypto.randomUUID(), name, layout, count);
               mutate((d) => { d.binders.push(binder); d.activeBinderId = binder.id; });
@@ -295,14 +324,33 @@ export default function App() {
         <div>
           <h2 className="current-binder-name">{binder.name}</h2>
           <p className="current-binder-meta">
-            {BINDER_TYPES[binder.layout].sub} · {pages.length} page{pages.length === 1 ? "" : "s"} ·{" "}
-            {pages.reduce((n, p) => n + p.slots.filter(Boolean).length, 0)} /{" "}
-            {pages.length * BINDER_TYPES[binder.layout].count} pockets filled
+            {BINDER_TYPES[binder.layout].sub} · {sheetCountOf(binder)} sheet{sheetCountOf(binder) === 1 ? "" : "s"} · {pages.length} sides ·{" "}
+            {pages.reduce((n, p) => n + p.slots.filter(Boolean).length, 0)} / {totalSlotsOf(binder)} pockets filled
           </p>
         </div>
         <button className="switch-binder-btn" onClick={() => go("binders")}>
           Switch binder
         </button>
+      </div>
+      <div className="binder-toolbar">
+        <label>
+          Sheets
+          <input
+            type="number" min={1} max={200} aria-label="Sheet count"
+            defaultValue={sheetCountOf(binder)} key={`sheets-${binder.id}-${sheetCountOf(binder)}`}
+            onBlur={(e) => { const msg = handleResizeSheets(binder.id, Number(e.target.value)); setSheetNotice(msg ?? ""); }}
+            onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+          />
+        </label>
+        <label className="page-size-control">
+          Page size: {pageScale}%
+          <input
+            type="range" min={60} max={130} step={5} value={pageScale} aria-label="Page size"
+            onChange={(e) => { const v = Number(e.target.value); setPageScale(v); try { localStorage.setItem("bindarr-page-scale", String(v)); } catch { /* noop */ } }}
+          />
+        </label>
+        <button onClick={() => { setPageScale(100); try { localStorage.setItem("bindarr-page-scale", "100"); } catch { /* noop */ } }}>Reset size</button>
+        {sheetNotice && <span className="sheet-notice" role="alert">{sheetNotice}</span>}
       </div>
       {placingItem && (
         <div className="placing-banner" role="status">
@@ -313,142 +361,118 @@ export default function App() {
         </div>
       )}
       <div className="page-tabs">
-        {pages.map((p, idx) => (
+        {Array.from({ length: spreads }, (_, sIdx) => (
           <div
-            key={idx}
-            className={`page-tab${idx === pageIdx ? " active" : ""}`}
-            title="Double-click to rename"
-            onClick={() => mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.activePageIndex = idx; })}
-            onDoubleClick={(e) => { e.stopPropagation(); setRenamingIndex(idx); }}
+            key={sIdx}
+            className={`page-tab${sIdx === spreadIdx ? " active" : ""}`}
+            onClick={() => mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.activePageIndex = spreadSides(sIdx, b.pages.length)[0] ?? 0; })}
           >
-            {renamingIndex === idx ? (
-              <input
-                defaultValue={p.name}
-                autoFocus
-                onFocus={(e) => e.target.select()}
-                onClick={(e) => e.stopPropagation()}
-                onDoubleClick={(e) => e.stopPropagation()}
-                onBlur={(e) => {
-                  const name = e.target.value.trim();
-                  setRenamingIndex(null);
-                  if (name && name !== p.name) mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.pages[idx].name = name; });
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                  if (e.key === "Escape") setRenamingIndex(null);
-                }}
-              />
-            ) : (
-              p.name
-            )}
+            {spreadLabel(sIdx, pages)}
           </div>
         ))}
-        <button
-          className="add-page-btn"
-          onClick={() =>
-            mutate((d) => {
-              const b = d.binders.find((x) => x.id === d.activeBinderId)!;
-              b.pages.push(blankPage(BINDER_TYPES[b.layout].count, b.pages.length + 1));
-              b.activePageIndex = b.pages.length - 1;
-            })
-          }
-        >
-          + New page
-        </button>
-        {pages.length > 1 && (
-          <button
-            className="del-page-btn"
-            onClick={() => {
-              if (!window.confirm(`Delete "${page.name}"? This can't be undone.`)) return;
-              mutate((d) => {
-                const b = d.binders.find((x) => x.id === d.activeBinderId)!;
-                b.pages.splice(b.activePageIndex, 1);
-                b.activePageIndex = Math.max(0, b.activePageIndex - 1);
-              });
-            }}
-          >
-            Delete page
-          </button>
-        )}
       </div>
 
-      <div className="binder-page">
-        <div className={`grid ${BINDER_TYPES[binder.layout].gridClass}`}>
-          {page.slots.map((card, idx) => (
-            <Pocket
-              key={idx}
-              index={idx}
-              card={card}
-              wishlistOnly={(() => { const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined; return !!linked && linked.want && !linked.have; })()}
-              artist={card?.bankId ? (bankItems.find((i) => i.id === card.bankId)?.artist ?? null) : null}
-              onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
-              isEditing={editingIndex === idx}
-              onEdit={() => {
-                if (placingItem) {
-                  setSlot(idx, bankItemToSlot(placingItem));
-                  setPlacingItem(null);
-                } else {
-                  setEditingIndex(idx);
-                }
-              }}
-              onClear={() => setSlot(idx, null)}
-              onSwap={(from) => swapSlots(from, idx)}
-              onBankDrop={(bankItemId) => {
-                const item = bankItems.find((i) => i.id === bankItemId);
-                if (item) setSlot(idx, bankItemToSlot(item));
-              }}
-            />
-          ))}
-        </div>
-        <div className="footer-row">
-          <div className="legend">
-            <span><i style={{ background: "var(--tag-showcase)" }} />Showcase</span>
-            <span><i style={{ background: "var(--tag-set)" }} />Set build</span>
-            <span><i style={{ background: "var(--tag-trade)" }} />Trade / bulk</span>
-          </div>
-          <button
-            className="clear-btn"
-            onClick={() => {
-              if (!window.confirm(`Clear every pocket on "${page.name}"?`)) return;
-              mutate((d) => {
-                const b = d.binders.find((x) => x.id === d.activeBinderId)!;
-                const p = b.pages[b.activePageIndex];
-                p.slots = p.slots.map(() => null);
-              });
-            }}
-          >
-            Clear this page
-          </button>
+      <div className="spread-wrap" style={{ "--binder-scale": pageScale / 100 } as React.CSSProperties}>
+        {visibleSides.map((sideIdx) => {
+          const side = pages[sideIdx];
+          return (
+            <div className="binder-page" key={sideIdx}>
+              <div className="side-head">
+                <span
+                  className="side-name" title="Double-click to rename"
+                  onDoubleClick={() => setRenamingIndex(sideIdx)}
+                >
+                  {renamingIndex === sideIdx ? (
+                    <input
+                      defaultValue={side.name} autoFocus aria-label="Page name"
+                      onFocus={(e) => e.target.select()}
+                      onBlur={(e) => {
+                        const name = e.target.value.trim();
+                        setRenamingIndex(null);
+                        if (name && name !== side.name) mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.pages[sideIdx].name = name; });
+                      }}
+                      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setRenamingIndex(null); }}
+                    />
+                  ) : side.name}
+                </span>
+                <button
+                  className="clear-btn"
+                  onClick={() => {
+                    if (!window.confirm(`Clear every pocket on "${side.name}"?`)) return;
+                    mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.pages[sideIdx].slots = b.pages[sideIdx].slots.map(() => null); });
+                  }}
+                >
+                  Clear this page
+                </button>
+              </div>
+              <div className={`grid ${BINDER_TYPES[binder.layout].gridClass}`}>
+                {side.slots.map((card, idx) => (
+                  <Pocket
+                    key={idx}
+                    index={idx}
+                    dragKey={`${sideIdx}:${idx}`}
+                    card={card}
+                    wishlistOnly={(() => { const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined; return !!linked && linked.want && !linked.have; })()}
+                    artist={card?.bankId ? (bankItems.find((i) => i.id === card.bankId)?.artist ?? null) : null}
+                    onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
+                    isEditing={editing?.page === sideIdx && editing?.slot === idx}
+                    onEdit={() => {
+                      if (placingItem) {
+                        setSlotAt(sideIdx, idx, bankItemToSlot(placingItem));
+                        setPlacingItem(null);
+                      } else {
+                        mutate((d) => { const b = d.binders.find((x) => x.id === d.activeBinderId)!; b.activePageIndex = sideIdx; });
+                        setEditing({ page: sideIdx, slot: idx });
+                      }
+                    }}
+                    onClear={() => setSlotAt(sideIdx, idx, null)}
+                    onSwap={(fromKey) => swapSlots(fromKey, sideIdx, idx)}
+                    onBankDrop={(bankItemId) => {
+                      const item = bankItems.find((i) => i.id === bankItemId);
+                      if (item) setSlotAt(sideIdx, idx, bankItemToSlot(item));
+                    }}
+                  />
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="footer-row">
+        <div className="legend">
+          <span><i style={{ background: "var(--tag-showcase)" }} />Showcase</span>
+          <span><i style={{ background: "var(--tag-set)" }} />Set build</span>
+          <span><i style={{ background: "var(--tag-trade)" }} />Trade / bulk</span>
         </div>
       </div>
       </div>
 
-      {editingIndex !== null && (
+      {editing !== null && (
         <>
-          <div className="editor-backdrop" onClick={() => setEditingIndex(null)} />
+          <div className="editor-backdrop" onClick={() => setEditing(null)} />
           <aside className="editor-sidebar" aria-label="Pocket editor">
             <div className="editor-head">
-              <h2>{page.slots[editingIndex] ? "Edit pocket" : "Add card"}</h2>
-              <button className="editor-close" aria-label="Close editor" onClick={() => setEditingIndex(null)}>×</button>
+              <h2>{pages[editing.page].slots[editing.slot] ? "Edit pocket" : "Add card"}</h2>
+              <button className="editor-close" aria-label="Close editor" onClick={() => setEditing(null)}>×</button>
             </div>
             <p className="editor-sub">
-              {page.name} · Pocket {editingIndex + 1}
+              {pages[editing.page].name} · Pocket {editing.slot + 1}
             </p>
             {/* Key remounts the form when switching pockets. */}
             <PocketEditor
-              key={`${binder.id}-${pageIdx}-${editingIndex}`}
-              card={page.slots[editingIndex]}
-              onSave={(c) => setSlot(editingIndex, c)}
-              onCancel={() => setEditingIndex(null)}
+              key={`${binder.id}-${editing.page}-${editing.slot}`}
+              card={pages[editing.page].slots[editing.slot]}
+              onSave={(c) => setSlotAt(editing.page, editing.slot, c)}
+              onCancel={() => setEditing(null)}
               bankItems={bankItems}
               visibleBanks={appSettings.visibleGames}
               onCreateBankItem={handleCreateBankItem}
               onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
             />
-            {page.slots[editingIndex] && (
+            {pages[editing.page].slots[editing.slot] && (
               <button
                 className="editor-clear"
-                onClick={() => setSlot(editingIndex, null)}
+                onClick={() => setSlotAt(editing.page, editing.slot, null)}
               >
                 Clear this pocket
               </button>

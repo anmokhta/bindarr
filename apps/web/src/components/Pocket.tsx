@@ -12,6 +12,7 @@ export default function Pocket({
   onSwap,
   onBankDrop,
   index,
+  dragKey,
 }: {
   card: CardSlot | null;
   isEditing: boolean;
@@ -20,9 +21,10 @@ export default function Pocket({
   onArtist?: (name: string) => void;
   onEdit: () => void;
   onClear: () => void;
-  onSwap: (fromIndex: number) => void;
+  onSwap: (fromKey: string) => void;
   onBankDrop: (bankItemId: string) => void;
   index: number;
+  dragKey?: string;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const tagInfo = card ? TAGS[card.tag] : TAGS.none;
@@ -39,7 +41,7 @@ export default function Pocket({
       className={`pocket${card ? " filled" : ""}${card?.image ? " has-image" : ""}${wishlistOnly ? " wishlist-only" : ""}${dragOver ? " dragover" : ""}${isEditing ? " editing" : ""}`}
       draggable={!!card}
       onClick={onEdit}
-      onDragStart={(e) => e.dataTransfer.setData("text/plain", String(index))}
+      onDragStart={(e) => e.dataTransfer.setData("text/plain", dragKey ?? String(index))}
       onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
       onDragLeave={() => setDragOver(false)}
       onDrop={(e) => {
@@ -47,8 +49,8 @@ export default function Pocket({
         setDragOver(false);
         const bankId = e.dataTransfer.getData("application/x-bindarr-bank");
         if (bankId) { onBankDrop(bankId); return; }
-        const from = Number(e.dataTransfer.getData("text/plain"));
-        if (!Number.isNaN(from)) onSwap(from);
+        const from = e.dataTransfer.getData("text/plain");
+        if (from) onSwap(from);
       }}
     >
       {card ? (

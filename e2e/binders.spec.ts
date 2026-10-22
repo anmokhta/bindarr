@@ -7,10 +7,10 @@ test("create a 4x3 binder, current indicator moves, archive/restore/duplicate/de
   await expect(currentCard.locator(".current-badge")).toHaveText("Current binder");
   await expect(currentCard.getByRole("button", { name: "Currently open" })).toBeDisabled();
 
-  // Create a 12-pocket binder with 2 pages; it opens in the planner.
+  // Create a 12-pocket binder with 1 sheet (2 sides); it opens in the planner.
   await page.getByPlaceholder("e.g. Vintage holos").fill("Landscape Binder");
   await page.getByLabel("Pocket type").selectOption("4x3");
-  await page.getByLabel("Pages").fill("2");
+  await page.getByLabel("Sheets", { exact: true }).fill("1");
   await page.getByRole("button", { name: "Create binder" }).click();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator(".current-binder-name")).toHaveText("Landscape Binder");

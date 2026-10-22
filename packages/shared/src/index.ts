@@ -65,15 +65,77 @@ export function blankPage(count: number, n: number): BinderPage {
   return { name: `Page ${n}`, slots: new Array(count).fill(null) };
 }
 
-export function makeBinder(id: string, name: string, layout: BinderType, pageCount = 1): Binder {
+export function makeBinder(id: string, name: string, layout: BinderType, sheetCount = 1): Binder {
+  const sheets = Math.max(1, Math.min(200, Math.floor(sheetCount) || 1));
   return {
     id,
     name,
     layout,
-    pages: Array.from({ length: Math.max(1, pageCount) }, (_, i) => blankPage(BINDER_TYPES[layout].count, i + 1)),
+    pages: Array.from({ length: sheets * 2 }, (_, i) => blankPage(BINDER_TYPES[layout].count, i + 1)),
     activePageIndex: 0,
     archivedAt: null,
   };
+}
+
+/** A binder's physical size: pages are individual sides of double-sided sheets. */
+export function sheetCountOf(binder: Binder): number {
+  return Math.ceil(binder.pages.length / 2);
+}
+
+export function totalSlotsOf(binder: Binder): number {
+  return binder.pages.length * BINDER_TYPES[binder.layout].count;
+}
+
+export type ResizeResult =
+  | { ok: true; binder: Binder }
+  | { ok: false; reason: string; blockedPage: string; cardCount: number };
+
+/** Grow/shrink a binder to `targetSheets` physical sheets (2 sides each). Shrinking never drops a card. */
+export function resizeBinderSheets(binder: Binder, targetSheets: number): ResizeResult {
+  const target = Math.max(1, Math.min(200, Math.floor(targetSheets) || 1));
+  const targetSides = target * 2;
+  const next: Binder = structuredClone(binder);
+  if (targetSides < next.pages.length) {
+    const removed = next.pages.slice(targetSides);
+    const cardCount = removed.reduce((n, p) => n + p.slots.filter(Boolean).length, 0);
+    if (cardCount > 0) {
+      const blocked = removed.find((p) => p.slots.some(Boolean))!;
+      return {
+        ok: false,
+        reason: `"${blocked.name}" still has cards — clear or move them before shrinking this binder.`,
+        blockedPage: blocked.name,
+        cardCount,
+      };
+    }
+    next.pages = next.pages.slice(0, targetSides);
+  } else {
+    const { count } = BINDER_TYPES[next.layout];
+    while (next.pages.length < targetSides) next.pages.push(blankPage(count, next.pages.length + 1));
+  }
+  next.activePageIndex = Math.min(next.activePageIndex, next.pages.length - 1);
+  return { ok: true, binder: next };
+}
+
+/** Spread index for a side: side 0 is solo, then pairs (1,2), (3,4), ... */
+export function spreadIndexForSide(sideIndex: number): number {
+  return sideIndex === 0 ? 0 : Math.floor((sideIndex + 1) / 2);
+}
+
+/** Side indices shown in a spread: [0], [1,2], [3,4], ... */
+export function spreadSides(spreadIndex: number, sideCount: number): number[] {
+  if (spreadIndex === 0) return sideCount > 0 ? [0] : [];
+  const start = spreadIndex * 2 - 1;
+  return [start, start + 1].filter((i) => i < sideCount);
+}
+
+export function spreadCount(sideCount: number): number {
+  return sideCount === 0 ? 0 : 1 + Math.ceil((sideCount - 1) / 2);
+}
+
+export function spreadLabel(spreadIndex: number, pages: BinderPage[]): string {
+  const sides = spreadSides(spreadIndex, pages.length);
+  if (sides.length <= 1) return pages[sides[0]]?.name ?? `Page ${spreadIndex + 1}`;
+  return `Pages ${sides[0] + 1}–${sides[1] + 1}`;
 }
 
 export function defaultState(): PlannerState {
@@ -94,6 +156,8 @@ function normalize(state: PlannerState): PlannerState | null {
     binder.pages.forEach((page) => {
       page.slots = Array.from({ length: count }, (_, i) => page.slots[i] ?? null);
     });
+    // Sheets are double-sided: pad an odd side count with a blank back side.
+    if (binder.pages.length % 2 === 1) binder.pages.push(blankPage(count, binder.pages.length + 1));
     binder.activePageIndex = Math.min(Math.max(0, binder.activePageIndex), binder.pages.length - 1);
   });
   // Guarantee at least one unarchived binder and a valid selection.

@@ -18,18 +18,18 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
   await expect(page.locator(".pocket").first()).toContainText(/Pikachu/i);
   await expect(page.getByText("All changes saved")).toBeVisible();
 
-  // Inline page rename (double-click), as in the original single-file app.
-  await page.locator(".page-tab").first().dblclick();
-  const rename = page.locator(".page-tab input");
+  // Inline page rename (double-click the side name), as in the original app.
+  await page.locator(".side-name").first().dblclick();
+  const rename = page.locator(".side-name input");
   await rename.fill("Favorites");
   await rename.press("Enter");
-  await expect(page.locator(".page-tab").first()).toHaveText("Favorites");
+  await expect(page.locator(".side-name").first()).toHaveText("Favorites");
   await expect(page.getByText("All changes saved")).toBeVisible();
 
   // Survives reload (server-side persistence).
   await page.reload();
   await expect(page.locator(".pocket").first()).toContainText(/Pikachu/i);
-  await expect(page.locator(".page-tab").first()).toHaveText("Favorites");
+  await expect(page.locator(".side-name").first()).toHaveText("Favorites");
 
   // Switching binders via the Binders page gives each binder its own pages.
   await expect(page.locator(".current-binder-name")).toHaveText("9-Pocket Binder");
