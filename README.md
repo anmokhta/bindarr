@@ -83,7 +83,7 @@ so macOS/Windows will warn on first launch. Why Electron over Tauri:
 
 ## Coming from the old single-file planner?
 
-The original `Binder Page Planner.html` saved to browser `localStorage`
+The original single-file version of Bindarr saved to browser `localStorage`
 (`binderPlannerState_v1`). Run Bindarr, open it in the same browser, and it
 will offer to import that data to the server on first load.
 
