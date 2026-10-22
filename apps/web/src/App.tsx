@@ -35,29 +35,48 @@ import BankPage from "./components/BankPage.js";
 import BindersPage from "./components/BindersPage.js";
 import SettingsPage, { applyTheme, initialTheme } from "./components/SettingsPage.js";
 import ArtistSearchPage from "./components/ArtistSearchPage.js";
+import { CollectionsPage, TagsPage } from "./components/TaxonomyPages.js";
 import { previousRoute, useRoute, type Route } from "./router.js";
 
 type SaveStatus = "loading" | "saved" | "saving" | "error";
-type View = "planner" | "bank" | "wishlist" | "binders" | "artist" | "settings";
+type View = "planner" | "bank" | "wishlist" | "tags" | "collections" | "binders" | "artist" | "settings";
 
 const VIEW_PATHS: Record<View, string> = {
-  planner: "/",
-  bank: "/bank",
-  wishlist: "/wishlist",
-  binders: "/binders",
-  artist: "/artist-search",
+  planner: "/binders/planner",
+  bank: "/bank/cards",
+  wishlist: "/bank/wishlist",
+  tags: "/bank/tags",
+  collections: "/bank/collections",
+  binders: "/binders/manage",
+  artist: "/extras/artist-search",
   settings: "/settings",
 };
 
 function viewForRoute(route: Route): View {
   switch (route) {
-    case "/bank": return "bank";
-    case "/wishlist": return "wishlist";
-    case "/binders": return "binders";
-    case "/artist-search": return "artist";
+    case "/bank/cards": return "bank";
+    case "/bank/wishlist": return "wishlist";
+    case "/bank/tags": return "tags";
+    case "/bank/collections": return "collections";
+    case "/binders/manage": return "binders";
+    case "/extras/artist-search": return "artist";
     case "/settings": return "settings";
     default: return "planner";
   }
+}
+
+type Section = "bank" | "binders" | "extras";
+
+const SECTIONS: { id: Section; label: string; defaultView: View; subsections: [View, string][] }[] = [
+  { id: "bank", label: "Bank", defaultView: "bank", subsections: [["bank", "Cards"], ["wishlist", "Wishlist"], ["tags", "Tags"], ["collections", "Collections"]] },
+  { id: "binders", label: "Binders", defaultView: "planner", subsections: [["planner", "Planner"], ["binders", "Manage Binders"]] },
+  { id: "extras", label: "Extras", defaultView: "artist", subsections: [["artist", "Artist Search"]] },
+];
+
+function sectionForView(view: View): Section {
+  if (view === "bank" || view === "wishlist" || view === "tags" || view === "collections") return "bank";
+  if (view === "artist") return "extras";
+  return "binders";
 }
 
 export default function App() {
@@ -243,10 +262,23 @@ export default function App() {
           {status === "error" && "Could not reach the server — changes are not being saved"}
         </div>
         <nav className="main-nav" aria-label="Main">
-          {([["planner", "Planner"], ["bank", "Bank"], ["wishlist", "Wishlist"], ["binders", "Binders"], ["artist", "Artist Search"]] as [View, string][]).map(([key, label]) => (
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              className={`nav-btn${sectionForView(view) === s.id ? " active" : ""}`}
+              aria-current={sectionForView(view) === s.id || undefined}
+              onClick={() => go(s.defaultView)}
+            >
+              {s.label}
+            </button>
+          ))}
+        </nav>
+        <nav className="sub-nav" aria-label="Section">
+          {(SECTIONS.find((s) => s.id === sectionForView(view))?.subsections ?? []).map(([key, label]) => (
             <button
               key={key}
-              className={`nav-btn${view === key ? " active" : ""}`}
+              className={`subnav-btn${view === key ? " active" : ""}`}
+              aria-current={view === key || undefined}
               onClick={() => go(key)}
             >
               {label}
@@ -264,7 +296,7 @@ export default function App() {
           onUpdate={handleUpdateBankItem}
           onDelete={handleDeleteBankItem}
           onPlace={(item) => { setPlacingItem(item); go("planner"); }}
-          onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
+          onArtist={(name) => navigate(`/extras/artist-search?artist=${encodeURIComponent(name)}`)}
           onImported={async () => { setBankItems(await fetchBank()); }}
         />
       )}
@@ -302,6 +334,8 @@ export default function App() {
           }}
         />
       )}
+      {view === "tags" && <TagsPage items={bankItems} />}
+      {view === "collections" && <CollectionsPage items={bankItems} />}
       {view === "artist" && <ArtistSearchPage />}
       {view === "planner" && (
       <>
@@ -414,7 +448,7 @@ export default function App() {
                     card={card}
                     wishlistOnly={(() => { const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined; return !!linked && linked.want && !linked.have; })()}
                     artist={card?.bankId ? (bankItems.find((i) => i.id === card.bankId)?.artist ?? null) : null}
-                    onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
+                    onArtist={(name) => navigate(`/extras/artist-search?artist=${encodeURIComponent(name)}`)}
                     isEditing={editing?.page === sideIdx && editing?.slot === idx}
                     onEdit={() => {
                       if (placingItem) {
@@ -467,7 +501,7 @@ export default function App() {
               bankItems={bankItems}
               visibleBanks={appSettings.visibleGames}
               onCreateBankItem={handleCreateBankItem}
-              onArtist={(name) => navigate(`/artist-search?artist=${encodeURIComponent(name)}`)}
+              onArtist={(name) => navigate(`/extras/artist-search?artist=${encodeURIComponent(name)}`)}
             />
             {pages[editing.page].slots[editing.slot] && (
               <button

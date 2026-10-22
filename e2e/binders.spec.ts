@@ -12,13 +12,14 @@ test("create a 4x3 binder, current indicator moves, archive/restore/duplicate/de
   await page.getByLabel("Pocket type").selectOption("4x3");
   await page.getByLabel("Sheets", { exact: true }).fill("1");
   await page.getByRole("button", { name: "Create binder" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/binders\/planner$/);
   await expect(page.locator(".current-binder-name")).toHaveText("Landscape Binder");
   await expect(page.locator(".pocket")).toHaveCount(12);
   await expect(page.locator(".page-tab")).toHaveCount(2);
 
   // Current indicator is on the new binder on /binders.
   await page.getByRole("button", { name: "Binders", exact: true }).click();
+  await page.getByRole("button", { name: "Manage Binders" }).click();
   const landscape = page.locator(".binder-card", { hasText: "Landscape Binder" });
   await expect(landscape).toHaveClass(/current/);
   await expect(landscape.locator(".current-badge")).toBeVisible();
@@ -43,6 +44,7 @@ test("create a 4x3 binder, current indicator moves, archive/restore/duplicate/de
 
   // Back on /binders, the indicator persisted on the copy.
   await page.getByRole("button", { name: "Binders", exact: true }).click();
+  await page.getByRole("button", { name: "Manage Binders" }).click();
   await expect(page.locator(".binder-card.current")).toContainText("Copy of Big Landscape");
 
   // Archive the copy (current moves to another binder), restore, archive again, delete.

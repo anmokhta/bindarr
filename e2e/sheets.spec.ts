@@ -47,6 +47,7 @@ test("3 sheets in a 2x2 binder = 24 slots, spreads, blocked shrink, size slider"
   // Clean up: return size to 100 for other specs and leave planner on 9-pocket binder.
   await page.getByLabel("Page size").fill("100");
   await page.getByRole("button", { name: "Binders", exact: true }).click();
+  await page.getByRole("button", { name: "Manage Binders" }).click();
   const nine = page.locator(".binder-card", { has: page.getByRole("heading", { name: "9-Pocket Binder", exact: true }) });
   if (!(await nine.evaluate((el) => el.classList.contains("current")))) {
     await nine.getByRole("button", { name: "Select & open" }).click();

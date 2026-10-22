@@ -52,6 +52,20 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .nav-btn { font-family: 'IBM Plex Mono', monospace; font-size: 13px; padding: 8px 14px; background: transparent; border: none; border-bottom: 2px solid transparent; color: var(--ink-soft); cursor: pointer; margin-bottom: -1px; }
 .nav-btn:hover { color: var(--ink); }
 .nav-btn.active { color: var(--ink); border-bottom-color: var(--vinyl); font-weight: 600; }
+.sub-nav { display: flex; gap: 4px; margin: -12px 0 20px; overflow-x: auto; }
+.subnav-btn { font-family: 'IBM Plex Mono', monospace; font-size: 12px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--pocket-border); background: var(--paper-raised); color: var(--ink-soft); cursor: pointer; white-space: nowrap; }
+.subnav-btn.active { background: var(--vinyl); border-color: var(--vinyl); color: #fff; font-weight: 600; }
+.planned-badge { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--vinyl); background: color-mix(in srgb, var(--gold) 30%, transparent); border: 1px solid var(--gold); border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
+.taxonomy-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
+.summary-card { background: var(--paper-raised); border: 1px solid var(--pocket-border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+.summary-card strong { font-family: 'Fraunces', serif; font-size: 22px; }
+.summary-card span { font-size: 12px; color: var(--ink-soft); }
+.taxonomy-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.taxonomy-card { background: var(--paper-raised); border: 1px solid var(--pocket-border); border-radius: 8px; padding: 14px; }
+.taxonomy-card h3 { font-family: 'Fraunces', serif; margin: 0 0 6px; }
+.taxonomy-planned { opacity: .85; }
+.rule-preview { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.rule-preview select, .rule-preview input { padding: 6px 8px; border: 1px solid var(--pocket-border); border-radius: 4px; background: var(--paper); color: var(--ink); }
 .page-section { margin-bottom: 30px; }
 .page-title { font-family: 'Fraunces', serif; font-size: 26px; margin: 0 0 4px; }
 .page-sub { color: var(--ink-soft); font-size: 14px; margin: 0 0 18px; max-width: 62ch; }

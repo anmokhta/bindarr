@@ -2,15 +2,19 @@
 
 **Card management and binder organizing.**
 
-Plan which cards go in which binder pockets (3×3 / 9-pocket and 2×2 / 4-pocket
-pages) before physically sleeving them. Includes Pokémon TCG lookup via
-pokemontcg.io, drag-to-swap pockets, and automatic saving. Cards live in one
-bank with independent have/want flags — Bank (`/bank`) is the have view,
-Wishlist (`/wishlist`) the want view (wishlist cards render in black & white
-in binders until marked obtained). Both views import/export JSON/CSV.
-External API calls are logged and viewable under Settings → Calls
-(`/settings?tab=calls`); rows are kept indefinitely for now — if the table
-grows large, prune entries older than 90 days.
+Plan which cards go in which binder pockets before physically sleeving them.
+Binders are real named binders with 3×3, 2×2, or 4×3 (12-pocket) layouts,
+sized in physical double-sided sheets: a 3-sheet 2×2 binder holds 24 cards.
+The planner shows Page 1, then two-page spreads, with a page-size slider.
+Cards live in one bank with independent have/want flags — Bank → Cards is
+the have view, Bank → Wishlist the want view (wishlist cards render in
+black & white in binders until marked obtained). Both views import/export
+JSON/CSV. Bank → Tags and Bank → Collections preview the tags/collections
+already in use; management and auto-tag rules are planned (see
+[docs/ROADMAP.md](docs/ROADMAP.md)). Includes Pokémon TCG lookup via
+pokemontcg.io, drag-to-swap pockets, and automatic saving. External API
+calls are logged under Settings → Calls (`/settings?tab=calls`); rows are
+kept indefinitely for now — prune entries older than 90 days if it grows.
 
 Bindarr is a self-hosted web app: a Fastify + SQLite server serves the
 React frontend and stores all binder data server-side, so you can use it from
@@ -95,9 +99,12 @@ will offer to import that data to the server on first load.
 
 ## Layout
 
-- `apps/web` — Vite + React + TypeScript frontend
-- `apps/server` — Fastify API (`GET /api/health`, `GET|PUT /api/state`) + SQLite
-- `packages/shared` — shared types/Zod schemas for the planner state
+- `apps/web` — Vite + React + TypeScript frontend (two-level task bar:
+  Bank / Binders / Extras, each with subsections; routes in
+  [docs/ROADMAP.md](docs/ROADMAP.md))
+- `apps/server` — Fastify API (`/api/state`, `/api/bank`, `/api/lookup`,
+  `/api/calls`, `/api/settings`) + SQLite
+- `packages/shared` — shared types/Zod schemas for planner + bank state
 - `apps/desktop-electron` — Electron shell (see ADR 0001)
-- `binder-planner-handoff.md` — original design notes and roadmap
-  (card bank, multiple binders, sections, import/export — not yet built)
+- `binder-planner-handoff.md` — original design notes (historical;
+  superseded by this README and `docs/ROADMAP.md`)

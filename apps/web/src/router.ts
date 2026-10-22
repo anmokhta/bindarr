@@ -1,19 +1,70 @@
 import { useCallback, useEffect, useState } from "react";
 
-export type Route = "/" | "/bank" | "/wishlist" | "/binders" | "/artist-search" | "/settings";
+export type Route =
+  | "/binders/planner"
+  | "/bank/cards"
+  | "/bank/wishlist"
+  | "/bank/tags"
+  | "/bank/collections"
+  | "/binders/manage"
+  | "/extras/artist-search"
+  | "/settings";
 
-const ROUTES: Route[] = ["/", "/bank", "/wishlist", "/binders", "/artist-search", "/settings"];
+const ROUTES: Route[] = [
+  "/binders/planner",
+  "/bank/cards",
+  "/bank/wishlist",
+  "/bank/tags",
+  "/bank/collections",
+  "/binders/manage",
+  "/extras/artist-search",
+  "/settings",
+];
 
+/** Canonical route for the current URL, applying legacy redirects. */
 export function currentRoute(): Route {
-  const path = window.location.pathname as Route;
-  return ROUTES.includes(path) ? path : "/";
+  const path = window.location.pathname;
+  if (ROUTES.includes(path as Route)) return path as Route;
+  switch (path) {
+    case "/":
+    case "/binders/planner":
+      return "/binders/planner";
+    case "/bank":
+      return "/bank/cards";
+    case "/wishlist":
+      return "/bank/wishlist";
+    case "/binders":
+      return "/binders/manage";
+    case "/artist-search":
+      return "/extras/artist-search";
+    default:
+      return "/binders/planner";
+  }
+}
+
+/** If the URL is a legacy alias, replace it with the canonical route (preserving query). */
+function applyRedirect(): boolean {
+  const canonical = currentRoute();
+  if (window.location.pathname !== canonical) {
+    window.history.replaceState({}, "", canonical + window.location.search);
+    return true;
+  }
+  return false;
 }
 
 export function useRoute(): [Route, (to: string, opts?: { replace?: boolean }) => void] {
-  const [route, setRoute] = useState<Route>(() => currentRoute());
+  const [route, setRoute] = useState<Route>(() => {
+    applyRedirect();
+    return currentRoute();
+  });
 
   useEffect(() => {
-    const onPop = () => setRoute(currentRoute());
+    applyRedirect();
+    setRoute(currentRoute());
+    const onPop = () => {
+      applyRedirect();
+      setRoute(currentRoute());
+    };
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
   }, []);
@@ -25,6 +76,7 @@ export function useRoute(): [Route, (to: string, opts?: { replace?: boolean }) =
     }
     if (opts?.replace) window.history.replaceState({}, "", to);
     else window.history.pushState({}, "", to);
+    applyRedirect();
     setRoute(currentRoute());
     window.scrollTo(0, 0);
   }, []);
@@ -35,8 +87,8 @@ export function useRoute(): [Route, (to: string, opts?: { replace?: boolean }) =
 /** Where Settings' back arrow / gear-again should go. */
 export function previousRoute(): string {
   try {
-    return sessionStorage.getItem("bindarr-prev-route") || "/";
+    return sessionStorage.getItem("bindarr-prev-route") || "/binders/planner";
   } catch {
-    return "/";
+    return "/binders/planner";
   }
 }

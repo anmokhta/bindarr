@@ -110,7 +110,7 @@ export default function BankPage({
 
   return (
     <section className="page-section">
-      <h2 className="page-title">{isWishlist ? "Wishlist" : "Card Bank"}</h2>
+      <h2 className="page-title">{isWishlist ? "Wishlist" : "Cards"}</h2>
       <p className="page-sub">
         {isWishlist
           ? "Cards you want but don't have yet. They show in black & white in binders until you mark them obtained."

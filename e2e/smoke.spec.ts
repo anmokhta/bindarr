@@ -34,6 +34,7 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
   // Switching binders via the Binders page gives each binder its own pages.
   await expect(page.locator(".current-binder-name")).toHaveText("9-Pocket Binder");
   await page.getByRole("button", { name: "Binders", exact: true }).click();
+  await page.getByRole("button", { name: "Manage Binders" }).click();
   await expect(page.getByRole("heading", { name: "Binders" })).toBeVisible();
   await expect(page.getByText("Create a new binder")).toBeVisible();
   await page.locator(".binder-card", { has: page.getByRole("heading", { name: "4-Pocket Binder", exact: true }) })
@@ -42,7 +43,7 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
   await expect(page.locator(".current-binder-name")).toHaveText("4-Pocket Binder");
 
   await page.getByRole("button", { name: "Bank", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Card Bank" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cards" })).toBeVisible();
 
   await page.getByRole("button", { name: "Settings" }).click();
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();

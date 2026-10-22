@@ -1,5 +1,11 @@
 # Binder Page Planner — Handoff Notes
 
+> **Superseded (2026-10-22):** this is the original single-file planner
+> handoff, kept for history. Current status, architecture, and goals
+> live in `README.md` and `docs/ROADMAP.md`. Nearly everything in the
+> roadmap below (card bank, import/export, multiple binders, sheets)
+> has since been built.
+
 ## What this is
 A tool for planning which cards go in which binder pockets before physically
 sleeving/moving cards around. Started as a single self-contained HTML file
