@@ -89,6 +89,23 @@ function SkeletonShell({
         </p>
         <button disabled title="Coming with the rules engine">Preview matches</button>
       </div>
+
+      <div className="settings-group taxonomy-planned">
+        <h3>Slot labels and Optimize <span className="planned-badge">Planned</span></h3>
+        <p className="settings-text">
+          Attach a tag or collection to a binder slot, page, or section so any card placed there inherits it.
+          Drag a label onto a binder to pull matching cards into that region. Binders (or sections) will also
+          support an ordered list of label rules — for example all Eevees, then one set&apos;s holos only, then
+          all sleepy Pokémon. Organize will grow an Optimize button that shows a before/after diff
+          (cards added, others pushed forward or back) and applies nothing until you confirm.
+          Smart tags/collections (rule-computed membership) stay separate from these positional slot labels.
+          See <code>docs/labels-and-optimize.md</code>.
+        </p>
+        <div className="rule-preview" aria-disabled="true">
+          <button disabled title="Coming with binder sections + Optimize">Attach label to slot…</button>
+          <button disabled title="Coming with Organize > Optimize">Optimize binder…</button>
+        </div>
+      </div>
     </section>
   );
 }
@@ -99,7 +116,7 @@ export function TagsPage({ items }: { items: BankItem[] }) {
   return (
     <SkeletonShell
       title="Tags"
-      sub="Every tag currently used on your bank cards. Soon you'll create, rename, and delete tags here, and auto-tag cards with rules."
+      sub="Every tag currently used on your bank cards. Soon you'll create, rename, and delete tags here, auto-tag cards with rules, and attach tags to binder slots or sections so placed cards inherit them."
       groups={groups}
       total={items.length}
       assigned={assigned}
@@ -117,7 +134,7 @@ export function CollectionsPage({ items }: { items: BankItem[] }) {
     <>
       <SkeletonShell
         title="Collections"
-        sub="Your mini-sets: the collections currently assigned to bank cards. Today a card belongs to one collection; whether collections become multi-value is an open design question for the rules milestone (see docs/ROADMAP.md)."
+        sub="Your mini-sets: the collections currently assigned to bank cards. Today a card belongs to one collection; whether collections become multi-value is an open design question for the rules and slot-label milestones (see docs/ROADMAP.md and docs/labels-and-optimize.md)."
         groups={groups}
         total={items.length}
         assigned={assigned}

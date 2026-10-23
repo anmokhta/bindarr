@@ -14,6 +14,8 @@ export interface WriteLeaseInfo {
 export interface WriteLease {
   writeMode: boolean;
   writer: WriteLeaseInfo | null;
+  /** Our instance id when writeMode is true. */
+  instanceId: string | null;
   release: () => void;
 }
 
@@ -54,22 +56,15 @@ function writeLock(lockPath: string, info: WriteLeaseInfo): void {
   writeFileSync(lockPath, JSON.stringify(info), "utf8");
 }
 
-/** Acquire an exclusive write lease for a on-disk SQLite path. In-memory DBs always write. */
-export function acquireWriteLease(databasePath: string): WriteLease {
-  if (databasePath === ":memory:") {
-    return { writeMode: true, writer: null, release: () => undefined };
-  }
-
+/** Current lock file contents (null if missing/invalid). */
+export function readWriteLeaseInfo(databasePath: string): WriteLeaseInfo | null {
+  if (databasePath === ":memory:") return null;
   const lockPath = lockPathFor(databasePath);
-  const existing = existsSync(lockPath) ? readLock(lockPath) : null;
-  if (existing && !isStale(existing)) {
-    return {
-      writeMode: false,
-      writer: existing,
-      release: () => undefined,
-    };
-  }
+  if (!existsSync(lockPath)) return null;
+  return readLock(lockPath);
+}
 
+function claimLock(lockPath: string): WriteLease {
   const startedAt = new Date().toISOString();
   const info: WriteLeaseInfo = {
     pid: process.pid,
@@ -79,16 +74,6 @@ export function acquireWriteLease(databasePath: string): WriteLease {
     instanceId: randomUUID(),
   };
   writeLock(lockPath, info);
-
-  // Re-read: if another writer raced and won, back off.
-  const after = readLock(lockPath);
-  if (after && after.instanceId !== info.instanceId && !isStale(after)) {
-    return {
-      writeMode: false,
-      writer: after,
-      release: () => undefined,
-    };
-  }
 
   const timer = setInterval(() => {
     const current = readLock(lockPath);
@@ -105,6 +90,7 @@ export function acquireWriteLease(databasePath: string): WriteLease {
   return {
     writeMode: true,
     writer: info,
+    instanceId: info.instanceId,
     release: () => {
       clearInterval(timer);
       try {
@@ -115,4 +101,60 @@ export function acquireWriteLease(databasePath: string): WriteLease {
       }
     },
   };
+}
+
+function readonlyLease(writer: WriteLeaseInfo | null): WriteLease {
+  return { writeMode: false, writer, instanceId: null, release: () => undefined };
+}
+
+function memoryLease(): WriteLease {
+  return { writeMode: true, writer: null, instanceId: null, release: () => undefined };
+}
+
+/** Acquire an exclusive write lease for a on-disk SQLite path. In-memory DBs always write. */
+export function acquireWriteLease(databasePath: string): WriteLease {
+  if (databasePath === ":memory:") return memoryLease();
+
+  const lockPath = lockPathFor(databasePath);
+  const existing = existsSync(lockPath) ? readLock(lockPath) : null;
+  if (existing && !isStale(existing)) {
+    return readonlyLease(existing);
+  }
+
+  const claimed = claimLock(lockPath);
+
+  // Re-read: if another writer raced and won, back off.
+  const after = readLock(lockPath);
+  if (after && after.instanceId !== claimed.instanceId && !isStale(after)) {
+    claimed.release();
+    return readonlyLease(after);
+  }
+
+  return claimed;
+}
+
+/** Steal the write lease regardless of who holds it (user override). */
+export function forceAcquireWriteLease(databasePath: string): WriteLease {
+  if (databasePath === ":memory:") return memoryLease();
+  return claimLock(lockPathFor(databasePath));
+}
+
+/**
+ * Promote to writer only if the lock is free or stale.
+ * Returns null when another live writer still holds the lease.
+ */
+export function tryPromoteWriteLease(databasePath: string): WriteLease | null {
+  if (databasePath === ":memory:") return memoryLease();
+
+  const lockPath = lockPathFor(databasePath);
+  const existing = existsSync(lockPath) ? readLock(lockPath) : null;
+  if (existing && !isStale(existing)) return null;
+
+  const claimed = claimLock(lockPath);
+  const after = readLock(lockPath);
+  if (after && after.instanceId !== claimed.instanceId && !isStale(after)) {
+    claimed.release();
+    return null;
+  }
+  return claimed;
 }

@@ -93,19 +93,13 @@ export default function BankItemForm({
 
   return (
     <div className="bank-item-form">
-      <h3>{initial ? `Edit ${initial.name}` : isMisc ? "Add misc item" : "Add card"}</h3>
-      {image && <img className="editor-preview" src={image} alt={name} />}
-      <input placeholder="Name *" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
       {!isMisc && (
-        <>
-          <div className="form-row">
-            <input placeholder="Set" value={set} onChange={(e) => setSet(e.target.value)} />
-            <input placeholder="Number" value={number} onChange={(e) => setNumber(e.target.value)} />
-          </div>
-          <input placeholder="Artist" value={artist} onChange={(e) => setArtist(e.target.value)} />
-          <input placeholder="Evolution line" value={evolutionLine} onChange={(e) => setEvolutionLine(e.target.value)} />
-          <div className="ptcg-search">
-            <button type="button" className="lookup-btn" onClick={() => void lookup()}>Look up on Pokémon TCG</button>
+        <div className={`bank-form-lookup${image ? " has-preview" : ""}`}>
+          {image && <img className="editor-preview" src={image} alt={name || "Card preview"} />}
+          <div className="bank-form-lookup-actions">
+            <button type="button" className="btn btn-primary btn-sm lookup-btn" onClick={() => void lookup()}>
+              Look up on Pokémon TCG
+            </button>
             {lookupStatus && <div className="ptcg-status">{lookupStatus}</div>}
             <div className="ptcg-results">
               {lookupResults.map((c) => (
@@ -116,35 +110,109 @@ export default function BankItemForm({
               ))}
             </div>
           </div>
-        </>
+        </div>
       )}
-      {isMisc && (
-        <>
-          <div className="form-row">
-            <select value={appliesToGame} onChange={(e) => setAppliesToGame(e.target.value)}>
-              <option value="">For any game</option>
-              {Object.entries(GAMES).map(([id, g]) => <option key={id} value={id}>For {g.label}</option>)}
-            </select>
-            <input placeholder="Maker / series" value={maker} onChange={(e) => setMaker(e.target.value)} />
+
+      <div className="bank-item-form-grid">
+        <label className="field field-span-2">
+          <span className="field-label">Name *</span>
+          <input value={name} onChange={(e) => setName(e.target.value)} autoFocus required />
+        </label>
+
+        {!isMisc && (
+          <>
+            <label className="field">
+              <span className="field-label">Set</span>
+              <input value={set} onChange={(e) => setSet(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Number</span>
+              <input value={number} onChange={(e) => setNumber(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Artist</span>
+              <input value={artist} onChange={(e) => setArtist(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Evolution line</span>
+              <input value={evolutionLine} onChange={(e) => setEvolutionLine(e.target.value)} />
+            </label>
+          </>
+        )}
+
+        {isMisc && (
+          <>
+            <label className="field">
+              <span className="field-label">For game</span>
+              <select value={appliesToGame} onChange={(e) => setAppliesToGame(e.target.value)}>
+                <option value="">For any game</option>
+                {Object.entries(GAMES).map(([id, g]) => <option key={id} value={id}>For {g.label}</option>)}
+              </select>
+            </label>
+            <label className="field">
+              <span className="field-label">Maker / series</span>
+              <input value={maker} onChange={(e) => setMaker(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Year</span>
+              <input inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Language</span>
+              <input value={language} onChange={(e) => setLanguage(e.target.value)} />
+            </label>
+            <label className="field field-span-2">
+              <span className="field-label">Condition</span>
+              <input value={condition} onChange={(e) => setCondition(e.target.value)} />
+            </label>
+          </>
+        )}
+
+        <div className="field field-span-2">
+          <span className="field-label">Have / Want</span>
+          <div className="flag-toggle" role="group" aria-label="Have or want">
+            <button
+              type="button"
+              className={`flag-toggle-btn${have ? " active" : ""}`}
+              aria-pressed={have}
+              onClick={() => setHave((v) => !v)}
+            >
+              I have it
+            </button>
+            <button
+              type="button"
+              className={`flag-toggle-btn${want ? " active" : ""}`}
+              aria-pressed={want}
+              onClick={() => setWant((v) => !v)}
+            >
+              I want it
+            </button>
           </div>
-          <div className="form-row">
-            <input placeholder="Year" inputMode="numeric" value={year} onChange={(e) => setYear(e.target.value)} />
-            <input placeholder="Language" value={language} onChange={(e) => setLanguage(e.target.value)} />
-            <input placeholder="Condition" value={condition} onChange={(e) => setCondition(e.target.value)} />
-          </div>
-        </>
-      )}
-      <div className="form-row checkbox-row">
-        <label className="check-label"><input type="checkbox" checked={have} onChange={(e) => setHave(e.target.checked)} /> I have it</label>
-        <label className="check-label"><input type="checkbox" checked={want} onChange={(e) => setWant(e.target.checked)} /> I want it</label>
+        </div>
+
+        <label className="field">
+          <span className="field-label">Collection</span>
+          <input value={collection} onChange={(e) => setCollection(e.target.value)} placeholder="Your mini-set" />
+        </label>
+        <label className="field">
+          <span className="field-label">Tags</span>
+          <input value={tagsText} onChange={(e) => setTagsText(e.target.value)} placeholder="Comma separated" />
+        </label>
+        <label className="field field-span-2">
+          <span className="field-label">Image URL</span>
+          <input value={image} onChange={(e) => setImage(e.target.value)} />
+        </label>
+        <label className="field field-span-2">
+          <span className="field-label">Notes</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} />
+        </label>
       </div>
-      <input placeholder="Collection (your mini-set)" value={collection} onChange={(e) => setCollection(e.target.value)} />
-      <input placeholder="Tags, comma separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
-      <input placeholder="Image URL" value={image} onChange={(e) => setImage(e.target.value)} />
-      <textarea placeholder="Notes" value={note} onChange={(e) => setNote(e.target.value)} />
-      <div className="edit-actions">
-        <button className="save-btn" disabled={saving} onClick={() => void submit()}>{saving ? "Saving…" : "Save to bank"}</button>
-        <button className="cancel-btn" onClick={onCancel}>Cancel</button>
+
+      <div className="bank-form-footer">
+        <button type="button" className="btn btn-ghost cancel-btn" onClick={onCancel}>Cancel</button>
+        <button type="button" className="btn btn-primary save-btn" disabled={saving || !name.trim()} onClick={() => void submit()}>
+          {saving ? "Saving…" : "Save to bank"}
+        </button>
       </div>
     </div>
   );

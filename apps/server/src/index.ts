@@ -14,7 +14,14 @@ import {
   type PlannerState,
 } from "@bindarr/shared";
 import { randomUUID } from "node:crypto";
-import { acquireWriteLease, type WriteLeaseInfo } from "./write-lease.js";
+import {
+  acquireWriteLease,
+  forceAcquireWriteLease,
+  readWriteLeaseInfo,
+  tryPromoteWriteLease,
+  type WriteLease,
+  type WriteLeaseInfo,
+} from "./write-lease.js";
 
 export interface ServerOptions {
   databasePath?: string;
@@ -119,8 +126,8 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   const appVersion = resolveAppVersion(opts.appVersion);
   const githubRepo = opts.githubRepo ?? process.env.GITHUB_REPO ?? "anmokhta/bindarr";
 
-  const lease = opts.skipWriteLease || databasePath === ":memory:"
-    ? { writeMode: true, writer: null as WriteLeaseInfo | null, release: () => undefined }
+  let lease: WriteLease = opts.skipWriteLease || databasePath === ":memory:"
+    ? { writeMode: true, writer: null as WriteLeaseInfo | null, instanceId: null, release: () => undefined }
     : acquireWriteLease(databasePath);
 
   let db: ReturnType<typeof openDb>;
@@ -131,6 +138,58 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     throw e;
   }
 
+  const demoteToReader = (writer: WriteLeaseInfo | null) => {
+    lease.release(); // stop heartbeat if we had claimed
+    lease = { writeMode: false, writer, instanceId: null, release: () => undefined };
+  };
+
+  /** Confirm we still own the lock file; demote if someone else took over. */
+  const stillOwnLease = (): boolean => {
+    if (!lease.writeMode) return false;
+    if (databasePath === ":memory:" || opts.skipWriteLease) return true;
+    if (!lease.instanceId) return true;
+    const current = readWriteLeaseInfo(databasePath);
+    if (!current || current.instanceId === lease.instanceId) return true;
+    demoteToReader(current);
+    return false;
+  };
+
+  const promoteToWriter = (force: boolean): { ok: true } | { ok: false; error: string; writer?: WriteLeaseInfo | null } => {
+    if (lease.writeMode && stillOwnLease()) return { ok: true };
+    if (databasePath === ":memory:" || opts.skipWriteLease) {
+      lease = { writeMode: true, writer: null, instanceId: null, release: () => undefined };
+      return { ok: true };
+    }
+
+    const next = force ? forceAcquireWriteLease(databasePath) : tryPromoteWriteLease(databasePath);
+    if (!next) {
+      const writer = readWriteLeaseInfo(databasePath);
+      return { ok: false, error: "Another Bindarr still holds the write lease", writer };
+    }
+
+    try {
+      const prev = db;
+      const nextDb = openDb(databasePath, false);
+      try {
+        prev.close();
+      } catch {
+        /* ignore close errors on readonly handle */
+      }
+      db = nextDb;
+      lease.release();
+      lease = next;
+      return { ok: true };
+    } catch (e) {
+      next.release();
+      return { ok: false, error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+
+  const softPromoteIfNeeded = () => {
+    if (lease.writeMode) return;
+    promoteToWriter(false);
+  };
+
   const readState = (): { state: PlannerState; updatedAt: string | null } => {
     const row = db
       .prepare("SELECT state, updated_at FROM planner_state WHERE id = 1")
@@ -140,21 +199,45 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   };
 
   const requireWrite = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
-    if (lease.writeMode) return null;
+    if (lease.writeMode && stillOwnLease()) return null;
+    softPromoteIfNeeded();
+    if (lease.writeMode && stillOwnLease()) return null;
     return reply.code(423).send({
       error: "Database is open read-only; another Bindarr holds the write lease",
-      writer: lease.writer,
+      writer: lease.writer ?? readWriteLeaseInfo(databasePath),
     });
   };
 
-  app.get("/api/health", async () => ({
-    ok: true,
-    service: "bindarr",
-    time: new Date().toISOString(),
-    version: appVersion,
-    writeMode: lease.writeMode,
-    writer: lease.writeMode ? undefined : lease.writer ?? undefined,
-  }));
+  app.get("/api/health", async () => {
+    softPromoteIfNeeded();
+    if (lease.writeMode) stillOwnLease();
+    const writerInfo = lease.writeMode ? undefined : (lease.writer ?? readWriteLeaseInfo(databasePath) ?? undefined);
+    return {
+      ok: true,
+      service: "bindarr",
+      time: new Date().toISOString(),
+      version: appVersion,
+      writeMode: lease.writeMode,
+      writer: writerInfo,
+    };
+  });
+
+  app.post("/api/write-lease/takeover", async (req, reply) => {
+    const body = (req.body ?? {}) as { confirm?: boolean };
+    if (body.confirm !== true) {
+      return reply.code(400).send({
+        error: "Pass { confirm: true } to take write access. Only do this if no other Bindarr is using this database.",
+      });
+    }
+    if (lease.writeMode && stillOwnLease()) {
+      return { writeMode: true, writer: lease.writer };
+    }
+    const result = promoteToWriter(true);
+    if (!result.ok) {
+      return reply.code(409).send({ error: result.error, writer: result.writer, writeMode: false });
+    }
+    return { writeMode: true, writer: lease.writer };
+  });
 
   let latestCache: { at: number; payload: unknown } | null = null;
   const LATEST_TTL_MS = 60 * 60 * 1000;

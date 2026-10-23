@@ -1,32 +1,131 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { BANK_LABELS, type BankItem } from "@bindarr/shared";
 
 export interface BankFilters {
   query: string;
-  set: string;
-  artist: string;
-  evolutionLine: string;
-  collection: string;
-  tag: string;
+  set: string[];
+  artist: string[];
+  evolutionLine: string[];
+  collection: string[];
+  tag: string[];
 }
 
-export const emptyFilters: BankFilters = { query: "", set: "", artist: "", evolutionLine: "", collection: "", tag: "" };
+export const emptyFilters: BankFilters = {
+  query: "",
+  set: [],
+  artist: [],
+  evolutionLine: [],
+  collection: [],
+  tag: [],
+};
 
 export function filterBankItems(items: BankItem[], f: BankFilters): BankItem[] {
   const q = f.query.trim().toLowerCase();
   return items.filter((i) => {
     if (q && !`${i.name} ${i.set} ${i.number} ${i.artist ?? ""} ${i.evolutionLine ?? ""} ${i.collection ?? ""} ${i.tags.join(" ")}`.toLowerCase().includes(q)) return false;
-    if (f.set && i.set !== f.set) return false;
-    if (f.artist && i.artist !== f.artist) return false;
-    if (f.evolutionLine && i.evolutionLine !== f.evolutionLine) return false;
-    if (f.collection && i.collection !== f.collection) return false;
-    if (f.tag && !i.tags.includes(f.tag)) return false;
+    if (f.set.length && !f.set.includes(i.set)) return false;
+    if (f.artist.length && !(i.artist && f.artist.includes(i.artist))) return false;
+    if (f.evolutionLine.length && !(i.evolutionLine && f.evolutionLine.includes(i.evolutionLine))) return false;
+    if (f.collection.length && !(i.collection && f.collection.includes(i.collection))) return false;
+    if (f.tag.length && !f.tag.some((t) => i.tags.includes(t))) return false;
     return true;
   });
 }
 
 function distinct(items: BankItem[], pick: (i: BankItem) => string | null): string[] {
   return [...new Set(items.map(pick).filter(Boolean) as string[])].sort();
+}
+
+function MultiSelectFilter({
+  label,
+  allLabel,
+  plural,
+  options,
+  selected,
+  onChange,
+}: {
+  label: string;
+  allLabel: string;
+  plural: string;
+  options: string[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const listId = useId();
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const triggerLabel =
+    selected.length === 0 ? allLabel
+      : selected.length === 1 ? selected[0]
+        : `${selected.length} ${plural}`;
+
+  function toggle(value: string) {
+    onChange(
+      selected.includes(value)
+        ? selected.filter((v) => v !== value)
+        : [...selected, value],
+    );
+  }
+
+  return (
+    <div className={`multi-select${open ? " open" : ""}`} ref={rootRef}>
+      <button
+        type="button"
+        className={`multi-select-trigger${selected.length ? " active" : ""}`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-label={label}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="multi-select-trigger-label">{triggerLabel}</span>
+        <span className="multi-select-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && (
+        <div className="multi-select-panel" id={listId} role="listbox" aria-multiselectable="true" aria-label={label}>
+          {selected.length > 0 && (
+            <button type="button" className="multi-select-clear" onClick={() => onChange([])}>
+              Clear
+            </button>
+          )}
+          {options.length === 0 ? (
+            <p className="multi-select-empty">No options yet</p>
+          ) : (
+            options.map((opt) => {
+              const checked = selected.includes(opt);
+              return (
+                <label key={opt} className={`multi-select-option${checked ? " checked" : ""}`}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => toggle(opt)}
+                  />
+                  <span>{opt}</span>
+                </label>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function BankFiltersBar({
@@ -38,36 +137,56 @@ export function BankFiltersBar({
   filters: BankFilters;
   onChange: (f: BankFilters) => void;
 }) {
-  const set = (patch: Partial<BankFilters>) => onChange({ ...filters, ...patch });
+  const patch = (p: Partial<BankFilters>) => onChange({ ...filters, ...p });
   return (
     <div className="bank-filters-bar">
       <input
         className="bank-search"
         placeholder="Search by name, set, artist, evolution…"
         value={filters.query}
-        onChange={(e) => set({ query: e.target.value })}
+        onChange={(e) => patch({ query: e.target.value })}
       />
       <div className="bank-filter-selects">
-        <select value={filters.set} onChange={(e) => set({ set: e.target.value })}>
-          <option value="">All sets</option>
-          {distinct(items, (i) => i.set || null).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.artist} onChange={(e) => set({ artist: e.target.value })}>
-          <option value="">All artists</option>
-          {distinct(items, (i) => i.artist).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.evolutionLine} onChange={(e) => set({ evolutionLine: e.target.value })}>
-          <option value="">All evolution lines</option>
-          {distinct(items, (i) => i.evolutionLine).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.collection} onChange={(e) => set({ collection: e.target.value })}>
-          <option value="">All collections</option>
-          {distinct(items, (i) => i.collection).map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
-        <select value={filters.tag} onChange={(e) => set({ tag: e.target.value })}>
-          <option value="">All tags</option>
-          {[...new Set(items.flatMap((i) => i.tags))].sort().map((v) => <option key={v} value={v}>{v}</option>)}
-        </select>
+        <MultiSelectFilter
+          label="Sets"
+          allLabel="All sets"
+          plural="sets"
+          options={distinct(items, (i) => i.set || null)}
+          selected={filters.set}
+          onChange={(next) => patch({ set: next })}
+        />
+        <MultiSelectFilter
+          label="Artists"
+          allLabel="All artists"
+          plural="artists"
+          options={distinct(items, (i) => i.artist)}
+          selected={filters.artist}
+          onChange={(next) => patch({ artist: next })}
+        />
+        <MultiSelectFilter
+          label="Evolution lines"
+          allLabel="All evolution lines"
+          plural="evolution lines"
+          options={distinct(items, (i) => i.evolutionLine)}
+          selected={filters.evolutionLine}
+          onChange={(next) => patch({ evolutionLine: next })}
+        />
+        <MultiSelectFilter
+          label="Collections"
+          allLabel="All collections"
+          plural="collections"
+          options={distinct(items, (i) => i.collection)}
+          selected={filters.collection}
+          onChange={(next) => patch({ collection: next })}
+        />
+        <MultiSelectFilter
+          label="Tags"
+          allLabel="All tags"
+          plural="tags"
+          options={[...new Set(items.flatMap((i) => i.tags))].sort()}
+          selected={filters.tag}
+          onChange={(next) => patch({ tag: next })}
+        />
       </div>
     </div>
   );

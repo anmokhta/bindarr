@@ -127,6 +127,17 @@ export async function fetchHealth(): Promise<HealthInfo> {
   return res.json() as Promise<HealthInfo>;
 }
 
+export async function takeWriteLease(): Promise<HealthInfo> {
+  const res = await fetch("/api/write-lease/takeover", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm: true }),
+  });
+  const data = (await res.json().catch(() => ({}))) as HealthInfo & { error?: string };
+  if (!res.ok) throw new Error(data.error ?? `Take write access failed (${res.status})`);
+  return { ...data, ok: true, service: data.service ?? "bindarr", time: data.time ?? new Date().toISOString(), writeMode: data.writeMode !== false };
+}
+
 export interface VersionLatest {
   current: string;
   latest: string | null;

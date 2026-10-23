@@ -76,7 +76,10 @@ database…** (open a `bindarr.db` in place — e.g. Docker `./data/bindarr.db`)
 
 Only one Bindarr process may write a given DB file at a time. A second
 instance (Docker + Electron sharing the same file) opens **read-only** until
-the writer exits; Settings and the main UI show a read-only banner.
+the writer exits (or the lock goes stale); Settings and the main UI show a
+read-only banner. Health checks soft-promote when the lease is free. If you
+are stuck read-only with nothing else open, use **Take write access** (confirm
+first — forcing while another instance is still writing can corrupt data).
 
 ```sh
 npm run build

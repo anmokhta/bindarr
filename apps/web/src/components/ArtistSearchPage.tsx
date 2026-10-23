@@ -11,7 +11,7 @@ export default function ArtistSearchPage() {
 
   return (
     <section className="page-section">
-      <h2 className="page-title">Artist Search</h2>
+      <h2 className="page-title">Artist Search <span className="planned-badge">Planned</span></h2>
       <p className="page-sub">
         Find cards by the artist who illustrated them. Full in-app search is coming soon —
         for now, jump straight to the artist's page on The Art of Pokémon.
@@ -27,11 +27,11 @@ export default function ArtistSearchPage() {
       </div>
       {artist.trim() && (
         <div className="bank-actions-row">
-          <a className="primary-btn" href={`https://www.artofpkm.com/illustrators/${slug}`} target="_blank" rel="noreferrer">
+          <a className="btn btn-primary primary-btn" href={`https://www.artofpkm.com/illustrators/${slug}`} target="_blank" rel="noreferrer">
             Open on The Art of Pokémon
           </a>
-          <button disabled title="Planned: search via the Pokémon TCG API (artist: query)">
-            Search with Pokémon TCG API (planned)
+          <button type="button" className="btn btn-secondary" disabled title="Planned: search via the Pokémon TCG API (artist: query)">
+            Search with Pokémon TCG API <span className="planned-badge">Planned</span>
           </button>
         </div>
       )}

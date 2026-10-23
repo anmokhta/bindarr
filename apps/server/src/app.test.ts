@@ -199,6 +199,54 @@ describe("server API", () => {
     }
   });
 
+  it("read-only instance can force-take the write lease", async () => {
+    const dbPath = tempDbPath();
+    const writer = await buildApp({ databasePath: dbPath, appVersion: "0.1.0" });
+    const reader = await buildApp({ databasePath: dbPath, appVersion: "0.1.0" });
+    try {
+      expect((await reader.inject({ method: "GET", url: "/api/health" })).json().writeMode).toBe(false);
+
+      const noConfirm = await reader.inject({ method: "POST", url: "/api/write-lease/takeover", payload: {} });
+      expect(noConfirm.statusCode).toBe(400);
+
+      const takeover = await reader.inject({
+        method: "POST",
+        url: "/api/write-lease/takeover",
+        payload: { confirm: true },
+      });
+      expect(takeover.statusCode).toBe(200);
+      expect(takeover.json().writeMode).toBe(true);
+
+      const put = await reader.inject({ method: "PUT", url: "/api/state", payload: { state: defaultState() } });
+      expect(put.statusCode).toBe(200);
+
+      // Former writer should detect lock theft and refuse writes.
+      const stolen = await writer.inject({ method: "PUT", url: "/api/state", payload: { state: defaultState() } });
+      expect(stolen.statusCode).toBe(423);
+    } finally {
+      await reader.close();
+      await writer.close();
+    }
+  });
+
+  it("soft-promotes to writer after the previous writer releases", async () => {
+    const dbPath = tempDbPath();
+    const writer = await buildApp({ databasePath: dbPath, appVersion: "0.1.0" });
+    const reader = await buildApp({ databasePath: dbPath, appVersion: "0.1.0" });
+    try {
+      expect((await reader.inject({ method: "GET", url: "/api/health" })).json().writeMode).toBe(false);
+      await writer.close();
+
+      const health = await reader.inject({ method: "GET", url: "/api/health" });
+      expect(health.json().writeMode).toBe(true);
+
+      const put = await reader.inject({ method: "PUT", url: "/api/state", payload: { state: defaultState() } });
+      expect(put.statusCode).toBe(200);
+    } finally {
+      await reader.close();
+    }
+  });
+
   it("version/latest compares against GitHub release tag", async () => {
     const fakeGh = (async () => Response.json({
       tag_name: "v0.2.0",

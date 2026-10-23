@@ -28,7 +28,9 @@ import {
   fetchState,
   saveSettings,
   saveState,
+  takeWriteLease,
   updateBankItem,
+  type HealthInfo,
 } from "./api.js";
 import Pocket from "./components/Pocket.js";
 import PocketEditor from "./components/PocketEditor.js";
@@ -97,6 +99,8 @@ export default function App() {
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings());
   const [placingItem, setPlacingItem] = useState<BankItem | null>(null);
   const [writeMode, setWriteMode] = useState(true);
+  const [writerInfo, setWriterInfo] = useState<HealthInfo["writer"]>(undefined);
+  const [takingLease, setTakingLease] = useState(false);
 
   useEffect(() => { applyTheme(initialTheme()); }, []);
 
@@ -105,13 +109,33 @@ export default function App() {
     fetchSettings().then(setAppSettings).catch(() => { /* defaults */ });
     const refreshAccess = () => {
       fetchHealth()
-        .then((h) => setWriteMode(h.writeMode !== false))
+        .then((h) => {
+          setWriteMode(h.writeMode !== false);
+          setWriterInfo(h.writeMode === false ? h.writer : undefined);
+        })
         .catch(() => { /* ignore */ });
     };
     refreshAccess();
     const id = window.setInterval(refreshAccess, 15_000);
     return () => window.clearInterval(id);
   }, []);
+
+  async function handleTakeWriteAccess() {
+    const ok = window.confirm(
+      "Only continue if no other Bindarr is using this database. Taking over while another instance is still writing can corrupt data.\n\nTake write access?",
+    );
+    if (!ok || takingLease) return;
+    setTakingLease(true);
+    try {
+      const h = await takeWriteLease();
+      setWriteMode(h.writeMode !== false);
+      setWriterInfo(h.writeMode === false ? h.writer : undefined);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Could not take write access");
+    } finally {
+      setTakingLease(false);
+    }
+  }
 
   // Esc cancels click-to-place mode.
   useEffect(() => {
@@ -274,7 +298,21 @@ export default function App() {
         </div>
         {!writeMode && (
           <div className="readonly-banner" role="status">
-            Read-only — another Bindarr holds the write lease on this database. Changes are blocked until that instance exits.
+            <div className="readonly-banner-text">
+              Read-only — another Bindarr holds the write lease
+              {writerInfo?.hostname || writerInfo?.pid
+                ? ` (${[writerInfo.hostname, writerInfo.pid != null ? `pid ${writerInfo.pid}` : null].filter(Boolean).join(", ")})`
+                : ""}
+              . Changes are blocked until that instance exits, or you take write access.
+            </div>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              disabled={takingLease}
+              onClick={() => void handleTakeWriteAccess()}
+            >
+              {takingLease ? "Taking…" : "Take write access"}
+            </button>
           </div>
         )}
         <nav className="main-nav" aria-label="Main">
@@ -514,6 +552,7 @@ export default function App() {
               bankItems={bankItems}
               visibleBanks={appSettings.visibleGames}
               onCreateBankItem={handleCreateBankItem}
+              onUpdateBankItem={handleUpdateBankItem}
               onArtist={(name) => navigate(`/extras/artist-search?artist=${encodeURIComponent(name)}`)}
             />
             {pages[editing.page].slots[editing.slot] && (

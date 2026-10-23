@@ -2,6 +2,9 @@ import { useMemo, useRef, useState } from "react";
 import { BANK_LABELS, type BankItem } from "@bindarr/shared";
 import { BankFiltersBar, emptyFilters, filterBankItems, type BankFilters } from "./BankPicker.js";
 import BankItemForm from "./BankItemForm.js";
+import ArtistLinkButton from "./ArtistLinkButton.js";
+import IconButton, { PencilIcon, TrashIcon } from "./IconButton.js";
+import Modal from "./Modal.js";
 import { importBankItems } from "../api.js";
 
 export type CollectionMode = "bank" | "wishlist";
@@ -92,6 +95,15 @@ export default function BankPage({
   const inGame = useMemo(() => inMode.filter((i) => i.game === activeGame), [inMode, activeGame]);
   const visible = useMemo(() => filterBankItems(inGame, filters), [inGame, filters]);
   const isWishlist = mode === "wishlist";
+  const formOpen = showForm || !!editing;
+
+  const formTitle = editing
+    ? `Edit ${editing.name}`
+    : activeGame === "misc"
+      ? "Add misc item"
+      : isWishlist
+        ? "Add wanted card"
+        : "Add card";
 
   async function handleImportFile(file: File) {
     try {
@@ -108,6 +120,11 @@ export default function BankPage({
     }
   }
 
+  function closeForm() {
+    setShowForm(false);
+    setEditing(null);
+  }
+
   return (
     <section className="page-section">
       <h2 className="page-title">{isWishlist ? "Wishlist" : "Cards"}</h2>
@@ -122,7 +139,12 @@ export default function BankPage({
           {visibleBanks.map((b) => {
             const count = items.filter((i) => i.game === b && (isWishlist ? i.want : i.have)).length;
             return (
-              <button key={b} className={`collection-bank${activeGame === b ? " active" : ""}`} onClick={() => { setGame(b); setShowForm(false); setEditing(null); }}>
+              <button
+                key={b}
+                type="button"
+                className={`collection-bank${activeGame === b ? " active" : ""}`}
+                onClick={() => { setGame(b); closeForm(); }}
+              >
                 <span>{BANK_LABELS[b] ?? b}</span>
                 <span className="collection-count">{count}</span>
               </button>
@@ -134,14 +156,32 @@ export default function BankPage({
           <BankFiltersBar items={inGame} filters={filters} onChange={setFilters} />
 
           <div className="bank-actions-row">
-            <button className="primary-btn" onClick={() => { setEditing(null); setShowForm((s) => !s); }}>
-              {showForm ? "Close form" : activeGame === "misc" ? "+ Add misc item" : isWishlist ? "+ Add wanted card" : "+ Add card"}
+            <button
+              type="button"
+              className="btn btn-primary primary-btn"
+              onClick={() => { setEditing(null); setShowForm(true); }}
+            >
+              {activeGame === "misc" ? "+ Add misc item" : isWishlist ? "+ Add wanted card" : "+ Add card"}
             </button>
             <span className="bank-count">{visible.length} of {inGame.length} item{inGame.length === 1 ? "" : "s"}</span>
             <span className="export-import">
-              <button onClick={() => download(`${mode}-${activeGame}.json`, JSON.stringify(visible, null, 2), "application/json")}>Export JSON</button>
-              <button onClick={() => download(`${mode}-${activeGame}.csv`, toCsv(visible), "text/csv")}>Export CSV</button>
-              <button onClick={() => fileRef.current?.click()}>Import</button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => download(`${mode}-${activeGame}.json`, JSON.stringify(visible, null, 2), "application/json")}
+              >
+                Export JSON
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => download(`${mode}-${activeGame}.csv`, toCsv(visible), "text/csv")}
+              >
+                Export CSV
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => fileRef.current?.click()}>
+                Import
+              </button>
               <input
                 ref={fileRef}
                 type="file"
@@ -153,24 +193,25 @@ export default function BankPage({
           </div>
           {notice && <p className="import-notice" role="status">{notice}</p>}
 
-          {(showForm || editing) && (
-            <BankItemForm
-              key={editing?.id ?? `new-${activeGame}-${mode}`}
-              game={activeGame}
-              initial={editing}
-              defaultHave={!isWishlist}
-              defaultWant={isWishlist}
-              onCancel={() => { setShowForm(false); setEditing(null); }}
-              onSubmit={async (payload) => {
-                if (editing) await onUpdate(editing.id, payload);
-                else await onCreate(payload);
-                setShowForm(false);
-                setEditing(null);
-              }}
-            />
+          {formOpen && (
+            <Modal title={formTitle} onClose={closeForm}>
+              <BankItemForm
+                key={editing?.id ?? `new-${activeGame}-${mode}`}
+                game={activeGame}
+                initial={editing}
+                defaultHave={!isWishlist}
+                defaultWant={isWishlist}
+                onCancel={closeForm}
+                onSubmit={async (payload) => {
+                  if (editing) await onUpdate(editing.id, payload);
+                  else await onCreate(payload);
+                  closeForm();
+                }}
+              />
+            </Modal>
           )}
 
-          {visible.length === 0 && !showForm && (
+          {visible.length === 0 && (
             <p className="bank-empty">
               {inGame.length === 0
                 ? isWishlist ? "Nothing on this wishlist yet — add a card you want above." : "Nothing in this bank yet — add a card above, or save one from a pocket's New tab."
@@ -207,24 +248,40 @@ export default function BankPage({
                   {item.want && <span className="mini-chip flag-want">Want</span>}
                 </div>
                 <div className="bank-card-actions">
-                  <button onClick={() => onPlace(item)}>Place</button>
+                  <button type="button" className="bank-card-action-primary" onClick={() => onPlace(item)}>Place</button>
                   {isWishlist && (
-                    <button onClick={() => void onUpdate(item.id, { ...item, have: true, want: false })}>Mark obtained</button>
+                    <button
+                      type="button"
+                      className="bank-card-action-secondary"
+                      onClick={() => void onUpdate(item.id, { ...item, have: true, want: false })}
+                    >
+                      Mark obtained
+                    </button>
                   )}
                   {!isWishlist && (
-                    <button aria-pressed={item.want} onClick={() => void onUpdate(item.id, { ...item, want: !item.want })}>
+                    <button
+                      type="button"
+                      className="bank-card-action-secondary"
+                      aria-pressed={item.want}
+                      onClick={() => void onUpdate(item.id, { ...item, want: !item.want })}
+                    >
                       {item.want ? "Wanting ✓" : "Want it"}
                     </button>
                   )}
-                  {item.artist && <button onClick={() => onArtist(item.artist!)}>More by this artist</button>}
-                  <button onClick={() => { setEditing(item); setShowForm(false); }}>Edit</button>
-                  <button
-                    onClick={() => {
-                      if (window.confirm(`Remove "${item.name}"? Pockets already filled with it keep their copy.`)) void onDelete(item.id);
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <div className="bank-card-actions-icons">
+                    {item.artist && <ArtistLinkButton artist={item.artist} onClick={onArtist} />}
+                    <IconButton label="Edit" onClick={() => { setEditing(item); setShowForm(false); }}>
+                      <PencilIcon />
+                    </IconButton>
+                    <IconButton
+                      label={`Delete ${item.name}`}
+                      onClick={() => {
+                        if (window.confirm(`Remove "${item.name}"? Pockets already filled with it keep their copy.`)) void onDelete(item.id);
+                      }}
+                    >
+                      <TrashIcon />
+                    </IconButton>
+                  </div>
                 </div>
               </article>
             ))}

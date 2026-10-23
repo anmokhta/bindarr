@@ -2,6 +2,7 @@ import { useState } from "react";
 import { TAGS, bankItemToSlot, type BankItem, type CardSlot, type CardTag } from "@bindarr/shared";
 import { lookupCards, type TcgCard } from "../api.js";
 import BankPicker from "./BankPicker.js";
+import ArtistLinkButton from "./ArtistLinkButton.js";
 
 export type BankPayload = Record<string, unknown>;
 
@@ -12,6 +13,7 @@ export default function PocketEditor({
   bankItems,
   visibleBanks,
   onCreateBankItem,
+  onUpdateBankItem,
   onArtist,
 }: {
   card: CardSlot | null;
@@ -20,8 +22,16 @@ export default function PocketEditor({
   bankItems: BankItem[];
   visibleBanks: string[];
   onCreateBankItem: (payload: BankPayload) => Promise<BankItem>;
+  onUpdateBankItem?: (id: string, payload: Record<string, unknown>) => Promise<void>;
   onArtist?: (name: string) => void;
 }) {
+  const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined;
+  const isLinked = !!linked;
+  const isWishlistLinked = !!linked && linked.want && !linked.have;
+  const isHaveLinked = !!linked && linked.have;
+  const isFilled = !!card;
+  const detailsTabLabel = isFilled ? "Details" : "New";
+
   const [tab, setTab] = useState<"bank" | "new">("new");
   const [name, setName] = useState(card?.name ?? "");
   const [tag, setTag] = useState<CardTag>(card?.tag ?? "none");
@@ -34,7 +44,7 @@ export default function PocketEditor({
   const [results, setResults] = useState<TcgCard[]>([]);
   const [picked, setPicked] = useState<TcgCard | null>(null);
 
-  // Bank metadata (used when saving this card to the bank)
+  // Bank metadata (used when saving this card to the bank) — only for unlinked pockets
   const [saveToBank, setSaveToBank] = useState(false);
   const [evolutionLine, setEvolutionLine] = useState("");
   const [collection, setCollection] = useState("");
@@ -68,13 +78,14 @@ export default function PocketEditor({
     setNote(`${c.setName ? c.setName + " " : ""}#${c.number}`);
     setImage(c.imageSmall);
     setEvolutionLine(c.evolvesFrom ?? c.name);
-    setSaveToBank(true);
+    // Don't auto-check when already linked — that would create a duplicate bank entry
+    if (!isLinked) setSaveToBank(true);
   }
 
   async function handleSave() {
     if (!name.trim() || saving) return;
     let bankId: string | null = card?.bankId ?? null;
-    if (saveToBank) {
+    if (saveToBank && !isLinked) {
       setSaving(true);
       try {
         const item = await onCreateBankItem({
@@ -100,6 +111,16 @@ export default function PocketEditor({
     onSave({ name: name.trim(), tag, note: note.trim(), image, bankId });
   }
 
+  async function handleMarkObtained() {
+    if (!linked || !onUpdateBankItem || saving) return;
+    setSaving(true);
+    try {
+      await onUpdateBankItem(linked.id, { ...linked, have: true, want: false });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="editor-tabs-wrap">
       <div className="editor-tabs" role="tablist" aria-label="Add a card">
@@ -107,7 +128,7 @@ export default function PocketEditor({
           Bank
         </button>
         <button role="tab" aria-selected={tab === "new"} className={`editor-tab${tab === "new" ? " active" : ""}`} onClick={() => setTab("new")}>
-          New
+          {detailsTabLabel}
         </button>
       </div>
 
@@ -119,6 +140,19 @@ export default function PocketEditor({
         />
       ) : (
         <div className="edit-form" onClick={(e) => e.stopPropagation()}>
+          {isHaveLinked && (
+            <p className="editor-link-note" role="status">
+              <span className="editor-link-chip">In bank</span>
+              Linked to bank — Save updates this pocket only.
+            </p>
+          )}
+          {isWishlistLinked && (
+            <p className="editor-link-note wishlist" role="status">
+              <span className="editor-link-chip wishlist">On wishlist</span>
+              Already on your wishlist — Save updates this pocket only (does not add another bank entry).
+            </p>
+          )}
+
           {image && <img className="editor-preview" src={image} alt={name} />}
           <input
             placeholder="Card name"
@@ -160,23 +194,39 @@ export default function PocketEditor({
                     <span>{c.name} — {c.setName} #{c.number}</span>
                   </button>
                   {c.artist && onArtist && (
-                    <button type="button" className="artist-link" onClick={() => onArtist(c.artist!)}>More by {c.artist}</button>
+                    <ArtistLinkButton artist={c.artist} onClick={onArtist} />
                   )}
                 </span>
               ))}
             </div>
           </div>
 
-          <label className="save-to-bank">
-            <input type="checkbox" checked={saveToBank} onChange={(e) => setSaveToBank(e.target.checked)} />
-            Also save to bank
-          </label>
-          {saveToBank && (
-            <div className="bank-meta-fields">
-              <input placeholder="Evolution line (e.g. Charmander)" value={evolutionLine} onChange={(e) => setEvolutionLine(e.target.value)} />
-              <input placeholder="Collection (your mini-set)" value={collection} onChange={(e) => setCollection(e.target.value)} />
-              <input placeholder="Tags, comma separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
-            </div>
+          {!isLinked && (
+            <>
+              <label className="save-to-bank">
+                <input type="checkbox" checked={saveToBank} onChange={(e) => setSaveToBank(e.target.checked)} />
+                Also add to bank
+              </label>
+              <p className="save-to-bank-hint">Creates a new bank or wishlist entry when you save.</p>
+              {saveToBank && (
+                <div className="bank-meta-fields">
+                  <input placeholder="Evolution line (e.g. Charmander)" value={evolutionLine} onChange={(e) => setEvolutionLine(e.target.value)} />
+                  <input placeholder="Collection (your mini-set)" value={collection} onChange={(e) => setCollection(e.target.value)} />
+                  <input placeholder="Tags, comma separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+                </div>
+              )}
+            </>
+          )}
+
+          {isWishlistLinked && onUpdateBankItem && (
+            <button
+              type="button"
+              className="btn btn-secondary bank-mark-obtained"
+              disabled={saving}
+              onClick={() => void handleMarkObtained()}
+            >
+              {saving ? "Updating…" : "Mark obtained"}
+            </button>
           )}
 
           <div className="edit-actions">

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { TAGS, type CardSlot } from "@bindarr/shared";
+import ArtistLinkButton from "./ArtistLinkButton.js";
 
 export default function Pocket({
   card,
@@ -61,17 +62,11 @@ export default function Pocket({
               <img className="card-full" src={card.image} alt={card.name} />
               <div className="card-overlay">
                 <div className="card-overlay-name">{card.name}</div>
-                {metaLine && <div className="card-overlay-meta">{metaLine}</div>}
+                <div className="card-overlay-meta-row">
+                  {metaLine && <div className="card-overlay-meta">{metaLine}</div>}
+                  {artist && onArtist && <ArtistLinkButton artist={artist} onClick={onArtist} />}
+                </div>
                 {wishlistOnly && <div className="card-overlay-meta wishlist-badge">Wishlist</div>}
-                {artist && onArtist && (
-                  <button
-                    type="button"
-                    className="card-overlay-artist"
-                    onClick={(e) => { e.stopPropagation(); onArtist(artist); }}
-                  >
-                    More by {artist}
-                  </button>
-                )}
               </div>
             </>
           ) : (

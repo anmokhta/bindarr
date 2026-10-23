@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { GAMES, type AppSettings, type GameId, type NavStyle } from "@bindarr/shared";
-import { fetchCalls, fetchCallStats, fetchHealth, fetchVersionLatest, type ApiCallRow, type VersionLatest } from "../api.js";
+import { fetchCalls, fetchCallStats, fetchHealth, fetchVersionLatest, takeWriteLease, type ApiCallRow, type HealthInfo, type VersionLatest } from "../api.js";
 import NavStylesPage from "./NavStylesPage.js";
 import SubNav from "./SubNav.js";
 
@@ -105,6 +105,8 @@ export default function SettingsPage({
   const [server, setServer] = useState<string>("Checking…");
   const [versionInfo, setVersionInfo] = useState<VersionLatest | null>(null);
   const [writeMode, setWriteMode] = useState<boolean | null>(null);
+  const [writerInfo, setWriterInfo] = useState<HealthInfo["writer"]>(undefined);
+  const [takingLease, setTakingLease] = useState(false);
   const [tab, setTab] = useState<SettingsTab>(tabFromUrl);
   const visibleGames = settings?.visibleGames ?? ["pokemon", "misc"];
   const navStyle: NavStyle = settings?.navStyle ?? "segment";
@@ -134,10 +136,28 @@ export default function SettingsPage({
       .then((d) => {
         setServer(`Connected · ${d.service} · v${d.version ?? "?"} · ${new Date(d.time).toLocaleTimeString()}`);
         setWriteMode(d.writeMode ?? true);
+        setWriterInfo(d.writeMode === false ? d.writer : undefined);
       })
       .catch(() => setServer("Not reachable — is the Bindarr server running?"));
     fetchVersionLatest().then(setVersionInfo).catch(() => setVersionInfo(null));
   }, []);
+
+  async function handleTakeWriteAccess() {
+    const ok = window.confirm(
+      "Only continue if no other Bindarr is using this database. Taking over while another instance is still writing can corrupt data.\n\nTake write access?",
+    );
+    if (!ok || takingLease) return;
+    setTakingLease(true);
+    try {
+      const h = await takeWriteLease();
+      setWriteMode(h.writeMode !== false);
+      setWriterInfo(h.writeMode === false ? h.writer : undefined);
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : "Could not take write access");
+    } finally {
+      setTakingLease(false);
+    }
+  }
 
   return (
     <section className="page-section settings-page">
@@ -223,9 +243,23 @@ export default function SettingsPage({
             <h3>Server</h3>
             <p className="settings-text">{server}</p>
             {writeMode === false && (
-              <p className="settings-text settings-warn">
-                Read-only — another Bindarr holds the write lease on this database.
-              </p>
+              <div className="settings-readonly">
+                <p className="settings-text settings-warn">
+                  Read-only — another Bindarr holds the write lease
+                  {writerInfo?.hostname || writerInfo?.pid
+                    ? ` (${[writerInfo.hostname, writerInfo.pid != null ? `pid ${writerInfo.pid}` : null].filter(Boolean).join(", ")})`
+                    : ""}
+                  . Soft recovery runs automatically when that lease goes stale; use Take write access only if nothing else is open.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={takingLease}
+                  onClick={() => void handleTakeWriteAccess()}
+                >
+                  {takingLease ? "Taking…" : "Take write access"}
+                </button>
+              </div>
             )}
             {versionInfo && (
               <p className="settings-text">

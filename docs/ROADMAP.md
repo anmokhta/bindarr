@@ -18,29 +18,33 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 - **Bank**: one card table with independent have/want flags — Bank >
   Cards is the have view, Bank > Wishlist the want view (wishlist cards
   render grayscale in binders until marked obtained); per-game bank
-  sidebar, filters, JSON/CSV import/export with dedupe.
+  sidebar, filters, JSON/CSV import/export with dedupe; Add/Edit card
+  in a modal with shared button styles.
 - **Lookup**: Pokémon TCG proxy with retry, SQLite cache, and stale
   fallback; every upstream attempt logged to Settings > Calls
   (`/settings?tab=calls`) with 1h/12h/24h/3d/7d/30d counts.
 - **Routing**: every screen has a real URL; the task bar is two-level
   (Bank / Binders / Extras + subsections) and old URLs redirect.
+- **Desktop DB share + updates**: Electron first-run Create new / Use
+  existing; single-writer lease; Settings version vs GitHub Releases;
+  `v*` tags publish desktop releases (see ADR 0001).
 
 ### Scaffolded (UI exists, feature not built)
 - **Extras > Artist Search**: research + artofpkm deep links only
-  (`docs/research/artist-search.md`); no result fetching yet.
+  (`docs/research/artist-search.md`); no result fetching yet. Page title
+  carries a Planned badge; binder/bank/lookup use an artist icon button
+  that deep-links here.
 - **Bank > Tags / Bank > Collections**: read-only previews of the tags
-  and collections already on cards, with disabled rule/bulk-apply
-  panels. Card forms and filters already use tags (many per card) and
-  collection (one per card).
+  and collections already on cards, with disabled rule/bulk-apply and
+  **Slot labels and Optimize** panels. Card forms and filters already
+  use tags (many per card) and collection (one per card). Design note:
+  [labels-and-optimize.md](labels-and-optimize.md).
 
 ## Open UI decisions
 
 - **Subsection / Settings nav:** segmented / sidebar / icon rail via
   Settings → Nav styles (`/settings?tab=nav-styles`); write-up:
   [ui-subsection-nav.md](ui-subsection-nav.md).
-- **Desktop DB share + updates:** Electron first-run Create new / Use
-  existing; single-writer lease; Settings version vs GitHub Releases;
-  `v*` tags publish desktop releases (see ADR 0001).
 
 ## Next steps (in order)
 
@@ -53,13 +57,21 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
    preview matches before applying; bulk-apply to existing cards;
    then optional auto-apply on create/import/update. Open questions:
    rule precedence on conflicting collection assignments, undo,
-   whether imports trigger rules.
+   whether imports trigger rules. Smart tags/collections live here.
 3. **Functional Artist Search** (Extras): query pokemontcg.io via the
    lookup proxy (`artist:"…"`), log calls through `logApiCall`, add
    results to Bank/Wishlist or place them.
 4. **Binder sections**: named groups of sides within a binder with
    filled/total rollups (deferred from the multiple-binders milestone).
-5. **More games & release polish**: Magic/Yu-Gi-Oh!/Lorcana/One Piece
+   Sections are the anchor for slot labels and Optimize.
+5. **Slot and section labels**: attach a tag/collection to a slot,
+   page, or section so placed cards inherit it; drag a label onto a
+   binder to pull matching cards. See
+   [labels-and-optimize.md](labels-and-optimize.md).
+6. **Organize > Optimize (diff preview)**: ordered label rules per
+   binder/section; Optimize computes proposed layout changes and shows
+   a before/after diff; Apply writes nothing until confirmed.
+7. **More games & release polish**: Magic/Yu-Gi-Oh!/Lorcana/One Piece
    lookups, full-app backup/restore in Settings, call-log pruning,
    signed desktop builds, first GitHub remote + real CI run.
 
@@ -69,6 +81,7 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 | --- | --- |
 | `/binders/planner` (`/`, `/binders/planner`) | Binders > Planner |
 | `/binders/manage` (`/binders`) | Binders > Manage Binders |
+| `/binders/organize` (future) | Binders > Organize (Optimize) — not routed yet |
 | `/bank/cards` (`/bank`) | Bank > Cards |
 | `/bank/wishlist` (`/wishlist`) | Bank > Wishlist |
 | `/bank/tags` | Bank > Tags (skeleton) |
