@@ -4,11 +4,19 @@
   "private": true,
   "description": "Bindarr desktop app (Electron shell around the local Bindarr server)",
   "main": "main.cjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/anmokhta/bindarr.git"
+  },
   "scripts": {
     "start": "electron .",
     "prepare-backend": "node scripts/prepare-backend.mjs",
     "dist": "node scripts/prepare-backend.mjs && electron-builder",
-    "dist:dir": "node scripts/prepare-backend.mjs && electron-builder --dir"
+    "dist:dir": "node scripts/prepare-backend.mjs && electron-builder --dir",
+    "dist:publish": "node scripts/prepare-backend.mjs && electron-builder --publish always"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
   },
   "devDependencies": {
     "@electron/rebuild": "^3.7.1",
@@ -18,8 +26,23 @@
   "build": {
     "appId": "com.bindarr.app",
     "productName": "Bindarr",
-    "files": ["main.cjs", "package.json"],
+    "files": [
+      "**/*",
+      "!scripts",
+      "!scripts/**",
+      "!.backend",
+      "!.backend/**",
+      "!dist",
+      "!dist/**"
+    ],
     "extraResources": [{ "from": ".backend", "to": "backend", "filter": ["**/*"] }],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "anmokhta",
+        "repo": "bindarr"
+      }
+    ],
     "mac": { "category": "public.app-category-productivity", "target": ["dmg"] },
     "win": { "target": ["nsis"] },
     "linux": { "category": "Utility", "target": ["AppImage", "deb"] }

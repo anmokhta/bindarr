@@ -1,6 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it } from "vitest";
 import { defaultState } from "@bindarr/shared";
 import { buildApp } from "./index.js";
+
+const tempDirs: string[] = [];
+afterEach(() => {
+  while (tempDirs.length) {
+    const d = tempDirs.pop();
+    if (d) rmSync(d, { recursive: true, force: true });
+  }
+});
+
+function tempDbPath() {
+  const dir = mkdtempSync(join(tmpdir(), "bindarr-"));
+  tempDirs.push(dir);
+  return join(dir, "bindarr.db");
+}
 
 describe("server API", () => {
   it("health, default state, and PUT/GET round-trip", async () => {
@@ -9,6 +26,8 @@ describe("server API", () => {
       const health = await app.inject({ method: "GET", url: "/api/health" });
       expect(health.statusCode).toBe(200);
       expect(health.json().ok).toBe(true);
+      expect(health.json().writeMode).toBe(true);
+      expect(health.json().version).toBeTruthy();
 
       const initial = await app.inject({ method: "GET", url: "/api/state" });
       expect(initial.json().state).toEqual(defaultState());
@@ -154,6 +173,46 @@ describe("server API", () => {
       await app.inject({ method: "PUT", url: "/api/settings", payload: { settings: { visibleGames: ["misc"] } } });
       const settings2 = await app.inject({ method: "GET", url: "/api/settings" });
       expect(settings2.json().settings.visibleGames).toEqual(["misc"]);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("second process on the same DB file is read-only", async () => {
+    const dbPath = tempDbPath();
+    const writer = await buildApp({ databasePath: dbPath, appVersion: "0.1.0" });
+    const reader = await buildApp({ databasePath: dbPath, appVersion: "0.1.0" });
+    try {
+      expect((await writer.inject({ method: "GET", url: "/api/health" })).json().writeMode).toBe(true);
+      const readerHealth = await reader.inject({ method: "GET", url: "/api/health" });
+      expect(readerHealth.json().writeMode).toBe(false);
+      expect(readerHealth.json().writer?.pid).toBe(process.pid);
+
+      const put = await reader.inject({ method: "PUT", url: "/api/state", payload: { state: defaultState() } });
+      expect(put.statusCode).toBe(423);
+
+      const get = await reader.inject({ method: "GET", url: "/api/state" });
+      expect(get.statusCode).toBe(200);
+    } finally {
+      await reader.close();
+      await writer.close();
+    }
+  });
+
+  it("version/latest compares against GitHub release tag", async () => {
+    const fakeGh = (async () => Response.json({
+      tag_name: "v0.2.0",
+      html_url: "https://github.com/anmokhta/bindarr/releases/tag/v0.2.0",
+    })) as typeof fetch;
+    const app = await buildApp({ databasePath: ":memory:", appVersion: "0.1.0", githubFetch: fakeGh, githubRepo: "anmokhta/bindarr" });
+    try {
+      const res = await app.inject({ method: "GET", url: "/api/version/latest" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        current: "0.1.0",
+        latest: "0.2.0",
+        updateAvailable: true,
+      });
     } finally {
       await app.close();
     }

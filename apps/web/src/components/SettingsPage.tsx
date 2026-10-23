@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { GAMES, type AppSettings, type GameId, type NavStyle } from "@bindarr/shared";
-import { fetchCalls, fetchCallStats, type ApiCallRow } from "../api.js";
+import { fetchCalls, fetchCallStats, fetchHealth, fetchVersionLatest, type ApiCallRow, type VersionLatest } from "../api.js";
 import NavStylesPage from "./NavStylesPage.js";
 import SubNav from "./SubNav.js";
 
@@ -103,6 +103,8 @@ export default function SettingsPage({
 }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [server, setServer] = useState<string>("Checking…");
+  const [versionInfo, setVersionInfo] = useState<VersionLatest | null>(null);
+  const [writeMode, setWriteMode] = useState<boolean | null>(null);
   const [tab, setTab] = useState<SettingsTab>(tabFromUrl);
   const visibleGames = settings?.visibleGames ?? ["pokemon", "misc"];
   const navStyle: NavStyle = settings?.navStyle ?? "segment";
@@ -128,10 +130,13 @@ export default function SettingsPage({
   useEffect(() => { applyTheme(theme); }, [theme]);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("bad"))))
-      .then((d) => setServer(`Connected · ${d.service} · ${new Date(d.time).toLocaleTimeString()}`))
+    fetchHealth()
+      .then((d) => {
+        setServer(`Connected · ${d.service} · v${d.version ?? "?"} · ${new Date(d.time).toLocaleTimeString()}`);
+        setWriteMode(d.writeMode ?? true);
+      })
       .catch(() => setServer("Not reachable — is the Bindarr server running?"));
+    fetchVersionLatest().then(setVersionInfo).catch(() => setVersionInfo(null));
   }, []);
 
   return (
@@ -217,10 +222,36 @@ export default function SettingsPage({
           <div className="settings-group">
             <h3>Server</h3>
             <p className="settings-text">{server}</p>
+            {writeMode === false && (
+              <p className="settings-text settings-warn">
+                Read-only — another Bindarr holds the write lease on this database.
+              </p>
+            )}
+            {versionInfo && (
+              <p className="settings-text">
+                {versionInfo.updateAvailable && versionInfo.latest ? (
+                  <>
+                    Update available: <strong>v{versionInfo.latest}</strong>
+                    {versionInfo.htmlUrl && (
+                      <>
+                        {" · "}
+                        <a href={versionInfo.htmlUrl} target="_blank" rel="noreferrer">Release notes</a>
+                      </>
+                    )}
+                    . Docker: pull/rebuild the image. Desktop: Help → Check for Updates…
+                  </>
+                ) : versionInfo.latest ? (
+                  <>Up to date (v{versionInfo.current}).</>
+                ) : (
+                  <>Running v{versionInfo.current}{versionInfo.error === "no_releases" ? " · no GitHub releases published yet" : ""}.</>
+                )}
+              </p>
+            )}
             <p className="settings-text">
               Binder data is stored server-side in SQLite at
               <code> ./data/bindarr.db </code>
-              on the host (Docker bind-mount). Copy that folder to back up — see README.
+              on the host (Docker bind-mount), or Electron app-data / a shared path you chose.
+              Copy that file/folder to back up — see README.
             </p>
           </div>
 

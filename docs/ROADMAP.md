@@ -38,6 +38,9 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 - **Subsection / Settings nav:** segmented / sidebar / icon rail via
   Settings → Nav styles (`/settings?tab=nav-styles`); write-up:
   [ui-subsection-nav.md](ui-subsection-nav.md).
+- **Desktop DB share + updates:** Electron first-run Create new / Use
+  existing; single-writer lease; Settings version vs GitHub Releases;
+  `v*` tags publish desktop releases (see ADR 0001).
 
 ## Next steps (in order)
 

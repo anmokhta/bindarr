@@ -16,7 +16,9 @@ RUN npm run build -w @bindarr/shared && npm run build -w @bindarr/server && npm 
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
-ENV NODE_ENV=production PORT=8080 DATABASE_PATH=/data/bindarr.db
+ARG APP_VERSION=0.1.0
+ENV NODE_ENV=production PORT=8080 DATABASE_PATH=/data/bindarr.db \
+    APP_VERSION=$APP_VERSION GITHUB_REPO=anmokhta/bindarr
 RUN mkdir -p /data && chown node:node /data
 COPY --from=build --chown=node:node /app/package.json ./package.json
 COPY --from=build --chown=node:node /app/node_modules ./node_modules

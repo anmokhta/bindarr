@@ -120,6 +120,17 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .nav-style-icons .subnav-btn.active { color: var(--vinyl); border-bottom-color: var(--gold); }
 .nav-style-icons .subnav-btn svg { display: block; }
 .planned-badge { font-family: 'IBM Plex Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--vinyl); background: color-mix(in srgb, var(--gold) 30%, transparent); border: 1px solid var(--gold); border-radius: 999px; padding: 2px 8px; vertical-align: middle; }
+.readonly-banner {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--gold);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--gold) 18%, transparent);
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.settings-warn { color: var(--vinyl); }
 .taxonomy-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 16px; }
 .summary-card { background: var(--paper-raised); border: 1px solid var(--pocket-border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
 .summary-card strong { font-family: 'Fraunces', serif; font-size: 22px; }

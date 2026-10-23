@@ -1,7 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import fastifyStatic from "@fastify/static";
 import Database from "better-sqlite3";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -14,6 +14,7 @@ import {
   type PlannerState,
 } from "@bindarr/shared";
 import { randomUUID } from "node:crypto";
+import { acquireWriteLease, type WriteLeaseInfo } from "./write-lease.js";
 
 export interface ServerOptions {
   databasePath?: string;
@@ -22,6 +23,12 @@ export interface ServerOptions {
   /** Injectable for tests; defaults to global fetch. */
   tcgFetch?: typeof fetch;
   tcgApiKey?: string;
+  /** Force write mode (tests / :memory:). When false, still attempts lease for file DBs. */
+  skipWriteLease?: boolean;
+  appVersion?: string;
+  githubRepo?: string;
+  /** Injectable GitHub fetch for version checks. */
+  githubFetch?: typeof fetch;
 }
 
 export interface TcgCardResult {
@@ -35,48 +42,94 @@ export interface TcgCardResult {
   evolvesTo: string[];
 }
 
-export function openDb(databasePath: string) {
-  if (databasePath !== ":memory:") mkdirSync(dirname(resolve(databasePath)), { recursive: true });
-  const db = new Database(databasePath);
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS planner_state (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      state TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS lookup_cache (
-      query TEXT PRIMARY KEY,
-      response TEXT NOT NULL,
-      fetched_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS bank_items (
-      id TEXT PRIMARY KEY,
-      game TEXT NOT NULL,
-      data TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS app_settings (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      data TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS api_calls (
-      id TEXT PRIMARY KEY,
-      created_at TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      game TEXT NOT NULL,
-      call TEXT NOT NULL,
-      status TEXT NOT NULL,
-      http_status INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_api_calls_created ON api_calls (created_at);
-  `);
+const SCHEMA_SQL = `
+  CREATE TABLE IF NOT EXISTS planner_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    state TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS lookup_cache (
+    query TEXT PRIMARY KEY,
+    response TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS bank_items (
+    id TEXT PRIMARY KEY,
+    game TEXT NOT NULL,
+    data TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS app_settings (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    data TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS api_calls (
+    id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    game TEXT NOT NULL,
+    call TEXT NOT NULL,
+    status TEXT NOT NULL,
+    http_status INTEGER
+  );
+  CREATE INDEX IF NOT EXISTS idx_api_calls_created ON api_calls (created_at);
+`;
+
+export function openDb(databasePath: string, readonly = false) {
+  if (databasePath !== ":memory:" && !readonly) mkdirSync(dirname(resolve(databasePath)), { recursive: true });
+  const db = new Database(databasePath, readonly ? { readonly: true, fileMustExist: true } : undefined);
+  if (!readonly) {
+    db.pragma("journal_mode = WAL");
+    db.exec(SCHEMA_SQL);
+  }
   return db;
+}
+
+function resolveAppVersion(explicit?: string): string {
+  if (explicit) return explicit;
+  if (process.env.APP_VERSION) return process.env.APP_VERSION;
+  try {
+    const rootPkg = resolve(dirname(fileURLToPath(import.meta.url)), "../../../package.json");
+    return JSON.parse(readFileSync(rootPkg, "utf8")).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+function parseSemver(v: string): number[] | null {
+  const m = v.trim().replace(/^v/i, "").match(/^(\d+)\.(\d+)\.(\d+)/);
+  if (!m) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+function isNewer(latest: string, current: string): boolean {
+  const a = parseSemver(latest);
+  const b = parseSemver(current);
+  if (!a || !b) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] > b[i]) return true;
+    if (a[i] < b[i]) return false;
+  }
+  return false;
 }
 
 export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstance> {
   const app = Fastify({ logger: opts.logger ?? false });
-  const db = openDb(opts.databasePath ?? process.env.DATABASE_PATH ?? "./data/bindarr.db");
+  const databasePath = opts.databasePath ?? process.env.DATABASE_PATH ?? "./data/bindarr.db";
+  const appVersion = resolveAppVersion(opts.appVersion);
+  const githubRepo = opts.githubRepo ?? process.env.GITHUB_REPO ?? "anmokhta/bindarr";
+
+  const lease = opts.skipWriteLease || databasePath === ":memory:"
+    ? { writeMode: true, writer: null as WriteLeaseInfo | null, release: () => undefined }
+    : acquireWriteLease(databasePath);
+
+  let db: ReturnType<typeof openDb>;
+  try {
+    db = openDb(databasePath, !lease.writeMode);
+  } catch (e) {
+    lease.release();
+    throw e;
+  }
 
   const readState = (): { state: PlannerState; updatedAt: string | null } => {
     const row = db
@@ -86,7 +139,61 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     return { state: parsePlannerState(JSON.parse(row.state)) ?? defaultState(), updatedAt: row.updated_at };
   };
 
-  app.get("/api/health", async () => ({ ok: true, service: "bindarr", time: new Date().toISOString() }));
+  const requireWrite = (reply: { code: (n: number) => { send: (b: unknown) => unknown } }) => {
+    if (lease.writeMode) return null;
+    return reply.code(423).send({
+      error: "Database is open read-only; another Bindarr holds the write lease",
+      writer: lease.writer,
+    });
+  };
+
+  app.get("/api/health", async () => ({
+    ok: true,
+    service: "bindarr",
+    time: new Date().toISOString(),
+    version: appVersion,
+    writeMode: lease.writeMode,
+    writer: lease.writeMode ? undefined : lease.writer ?? undefined,
+  }));
+
+  let latestCache: { at: number; payload: unknown } | null = null;
+  const LATEST_TTL_MS = 60 * 60 * 1000;
+  app.get("/api/version/latest", async (_req, reply) => {
+    if (latestCache && Date.now() - latestCache.at < LATEST_TTL_MS) {
+      return latestCache.payload;
+    }
+    const ghFetch = opts.githubFetch ?? fetch;
+    try {
+      const res = await ghFetch(`https://api.github.com/repos/${githubRepo}/releases/latest`, {
+        headers: {
+          accept: "application/vnd.github+json",
+          "user-agent": "bindarr",
+          ...(process.env.GITHUB_TOKEN ? { authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}),
+        },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (res.status === 404) {
+        const payload = { latest: null, current: appVersion, updateAvailable: false, htmlUrl: null, error: "no_releases" };
+        latestCache = { at: Date.now(), payload };
+        return payload;
+      }
+      if (!res.ok) {
+        return reply.code(502).send({ error: `GitHub Releases unavailable (HTTP ${res.status})`, current: appVersion });
+      }
+      const data = (await res.json()) as { tag_name?: string; html_url?: string };
+      const latest = (data.tag_name ?? "").replace(/^v/i, "") || null;
+      const payload = {
+        latest,
+        current: appVersion,
+        updateAvailable: latest ? isNewer(latest, appVersion) : false,
+        htmlUrl: data.html_url ?? `https://github.com/${githubRepo}/releases`,
+      };
+      latestCache = { at: Date.now(), payload };
+      return payload;
+    } catch (e) {
+      return reply.code(502).send({ error: String(e), current: appVersion });
+    }
+  });
 
   // Pokémon TCG lookup proxy. The upstream api.pokemontcg.io intermittently
   // returns 500/502 unauthenticated, so: retry with backoff, send an API key
@@ -98,6 +205,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
 
   /** Log one external API call. Reused by future providers (artist search). */
   const logApiCall = (entry: { provider: string; game: string; call: string; status: "success" | "error" | "cache-hit"; httpStatus?: number | null }) => {
+    if (!lease.writeMode) return;
     db.prepare("INSERT INTO api_calls (id, created_at, provider, game, call, status, http_status) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(randomUUID(), new Date().toISOString(), entry.provider, entry.game, entry.call, entry.status, entry.httpStatus ?? null);
   };
@@ -145,10 +253,12 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
           evolvesFrom: c.evolvesFrom ?? null,
           evolvesTo: Array.isArray(c.evolvesTo) ? c.evolvesTo : [],
         }));
-        db.prepare(
-          `INSERT INTO lookup_cache (query, response, fetched_at) VALUES (?, ?, ?)
-           ON CONFLICT(query) DO UPDATE SET response = excluded.response, fetched_at = excluded.fetched_at`,
-        ).run(cacheKey, JSON.stringify(cards), new Date().toISOString());
+        if (lease.writeMode) {
+          db.prepare(
+            `INSERT INTO lookup_cache (query, response, fetched_at) VALUES (?, ?, ?)
+             ON CONFLICT(query) DO UPDATE SET response = excluded.response, fetched_at = excluded.fetched_at`,
+          ).run(cacheKey, JSON.stringify(cards), new Date().toISOString());
+        }
         return { cards, cached: false };
       } catch {
         lastStatus = 0;
@@ -176,6 +286,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   });
 
   app.post("/api/bank", async (req, reply) => {
+    if (requireWrite(reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
     const item = parseBankItem({ ...body, id: typeof body.id === "string" && body.id ? body.id : randomUUID() });
     if (!item) return reply.code(400).send({ error: "Invalid bank item" });
@@ -187,6 +298,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   });
 
   app.put("/api/bank/:id", async (req, reply) => {
+    if (requireWrite(reply)) return;
     const { id } = req.params as { id: string };
     const item = parseBankItem({ ...((req.body ?? {}) as Record<string, unknown>), id });
     if (!item) return reply.code(400).send({ error: "Invalid bank item" });
@@ -198,6 +310,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   });
 
   app.delete("/api/bank/:id", async (req, reply) => {
+    if (requireWrite(reply)) return;
     const { id } = req.params as { id: string };
     const result = db.prepare("DELETE FROM bank_items WHERE id = ?").run(id);
     if (!result.changes) return reply.code(404).send({ error: "Bank item not found" });
@@ -205,6 +318,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   });
 
   app.post("/api/bank/import", async (req, reply) => {
+    if (requireWrite(reply)) return;
     const body = (req.body ?? {}) as { items?: unknown[] };
     if (!Array.isArray(body.items)) return reply.code(400).send({ error: "Expected { items: [...] }" });
     const existing = (db.prepare("SELECT data FROM bank_items").all() as { data: string }[])
@@ -275,7 +389,8 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     return { settings: row ? parseAppSettings(JSON.parse(row.data)) : defaultSettings() };
   });
 
-  app.put("/api/settings", async (req) => {
+  app.put("/api/settings", async (req, reply) => {
+    if (requireWrite(reply)) return;
     const settings = parseAppSettings((req.body as { settings?: unknown })?.settings ?? req.body);
     db.prepare(
       `INSERT INTO app_settings (id, data) VALUES (1, ?)
@@ -287,6 +402,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   app.get("/api/state", async () => readState());
 
   app.put("/api/state", async (req, reply) => {
+    if (requireWrite(reply)) return;
     const body = (req.body ?? {}) as { state?: unknown };
     const state = parsePlannerState(body.state ?? body);
     if (!state) return reply.code(400).send({ error: "Invalid planner state" });
@@ -298,7 +414,10 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     return { state, updatedAt };
   });
 
-  app.addHook("onClose", async () => db.close());
+  app.addHook("onClose", async () => {
+    lease.release();
+    db.close();
+  });
 
   // Production: serve the built web app from the same origin/port.
   const webDist = opts.webDist ?? process.env.WEB_DIST ??

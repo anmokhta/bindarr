@@ -112,6 +112,35 @@ export async function fetchSettings(): Promise<AppSettings> {
   return parseAppSettings(data.settings);
 }
 
+export interface HealthInfo {
+  ok: boolean;
+  service: string;
+  time: string;
+  version?: string;
+  writeMode?: boolean;
+  writer?: { hostname?: string; pid?: number; startedAt?: string };
+}
+
+export async function fetchHealth(): Promise<HealthInfo> {
+  const res = await fetch("/api/health");
+  if (!res.ok) throw new Error(`GET /api/health failed: ${res.status}`);
+  return res.json() as Promise<HealthInfo>;
+}
+
+export interface VersionLatest {
+  current: string;
+  latest: string | null;
+  updateAvailable: boolean;
+  htmlUrl: string | null;
+  error?: string;
+}
+
+export async function fetchVersionLatest(): Promise<VersionLatest | null> {
+  const res = await fetch("/api/version/latest");
+  if (!res.ok) return null;
+  return res.json() as Promise<VersionLatest>;
+}
+
 export async function saveSettings(settings: AppSettings): Promise<AppSettings> {
   const res = await fetch("/api/settings", {
     method: "PUT",

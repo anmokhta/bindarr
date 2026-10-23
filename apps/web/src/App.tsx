@@ -23,6 +23,7 @@ import {
   createBankItem,
   deleteBankItem,
   fetchBank,
+  fetchHealth,
   fetchSettings,
   fetchState,
   saveSettings,
@@ -95,12 +96,21 @@ export default function App() {
   const [bankItems, setBankItems] = useState<BankItem[]>([]);
   const [appSettings, setAppSettings] = useState<AppSettings>(defaultSettings());
   const [placingItem, setPlacingItem] = useState<BankItem | null>(null);
+  const [writeMode, setWriteMode] = useState(true);
 
   useEffect(() => { applyTheme(initialTheme()); }, []);
 
   useEffect(() => {
     fetchBank().then(setBankItems).catch(() => { /* bank unavailable — planner still works */ });
     fetchSettings().then(setAppSettings).catch(() => { /* defaults */ });
+    const refreshAccess = () => {
+      fetchHealth()
+        .then((h) => setWriteMode(h.writeMode !== false))
+        .catch(() => { /* ignore */ });
+    };
+    refreshAccess();
+    const id = window.setInterval(refreshAccess, 15_000);
+    return () => window.clearInterval(id);
   }, []);
 
   // Esc cancels click-to-place mode.
@@ -262,6 +272,11 @@ export default function App() {
           {status === "saved" && "All changes saved"}
           {status === "error" && "Could not reach the server — changes are not being saved"}
         </div>
+        {!writeMode && (
+          <div className="readonly-banner" role="status">
+            Read-only — another Bindarr holds the write lease on this database. Changes are blocked until that instance exits.
+          </div>
+        )}
         <nav className="main-nav" aria-label="Main">
           {SECTIONS.map((s) => (
             <button

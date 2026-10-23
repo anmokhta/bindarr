@@ -70,8 +70,13 @@ built UI on `PORT`, default 8080), `npm test`, `npm run typecheck`.
 
 ## Desktop app (Electron)
 
-The same server + UI packaged for Linux/Mac/Windows. It starts the backend
-locally (DB in your OS app-data folder) and opens it in an app window.
+The same server + UI packaged for Linux/Mac/Windows. On first launch you
+choose **Create new database** (standard OS app-data path) or **Use existing
+database…** (open a `bindarr.db` in place — e.g. Docker `./data/bindarr.db`).
+
+Only one Bindarr process may write a given DB file at a time. A second
+instance (Docker + Electron sharing the same file) opens **read-only** until
+the writer exits; Settings and the main UI show a read-only banner.
 
 ```sh
 npm run build
@@ -79,10 +84,13 @@ npm run desktop:dev    # run unpackaged
 npm run desktop:dist   # package for your OS into apps/desktop-electron/dist
 ```
 
-Every push and pull request runs the **Desktop** GitHub Actions workflow,
-which builds unsigned macOS (`.dmg`), Windows (NSIS `.exe`), and Linux
-(`.AppImage` + `.deb`) artifacts and uploads them for that commit. They are
-**not code-signed/notarized**, so macOS/Windows will warn on first launch.
+**Updates:** Settings → Server compares the running version to the latest
+GitHub Release (Docker and desktop). Packaged desktop builds also offer
+**Help → Check for Updates…** (downloads via `electron-updater`).
+
+Every push/PR builds unsigned macOS / Windows / Linux **artifacts**. Pushing
+a `v*` tag publishes a GitHub Release with installers for the updater. Builds
+are **not code-signed/notarized**, so macOS/Windows will warn on first launch.
 Why Electron over Tauri:
 [docs/adr/0001-desktop-shell.md](docs/adr/0001-desktop-shell.md).
 

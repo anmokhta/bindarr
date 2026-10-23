@@ -39,7 +39,11 @@ package, which matters more for a self-hosted personal tool than bundle size.
 ## Consequences
 - Larger downloads (~245 MB macOS app, mostly Chromium + backend deps).
 - Unsigned artifacts for now: CI builds `.dmg` / NSIS `.exe` /
-  `.AppImage`+`.deb` on every push/PR without code-signing/notarization;
-  macOS/Windows will warn on first launch until signing certificates are added.
+  `.AppImage`+`.deb` on every push/PR; `v*` tags publish GitHub Releases for
+  `electron-updater`. No code-signing/notarization yet — macOS/Windows warn
+  on first launch until certificates are added.
+- First-run DB setup can point at a shared `bindarr.db` (e.g. Docker
+  `./data`). The server enforces a single write lease so a second process
+  is read-only.
 - The Tauri spike was deleted; revisit only if bundle size becomes a real
   problem and a Rust/sidecar pipeline is worth it.
