@@ -243,13 +243,21 @@ export function parseBankItem(value: unknown): BankItem | null {
   return r.success ? r.data : null;
 }
 
+export const NAV_STYLES = {
+  segment: { label: "Segmented control" },
+  sidebar: { label: "Sidebar / inset list" },
+  icons: { label: "Icon + label rail" },
+} as const;
+export type NavStyle = keyof typeof NAV_STYLES;
+
 export const appSettingsSchema = z.object({
   visibleGames: z.array(z.string()).default(["pokemon", "misc"]),
+  navStyle: z.enum(["segment", "sidebar", "icons"]).default("segment"),
 });
 export type AppSettings = z.infer<typeof appSettingsSchema>;
 
 export function defaultSettings(): AppSettings {
-  return { visibleGames: ["pokemon", "misc"] };
+  return { visibleGames: ["pokemon", "misc"], navStyle: "segment" };
 }
 
 export function parseAppSettings(value: unknown): AppSettings {

@@ -9,14 +9,9 @@ services:
       DATABASE_PATH: /data/bindarr.db
       POKEMONTCG_API_KEY: ${POKEMONTCG_API_KEY:-}
     volumes:
-      - bindarr-data:/data
-      # Bind-mount alternative (easier manual backups) — comment the line above
-      # and uncomment this instead:
-      # - ./data:/data
+      # Host folder (gitignored). Survives `docker compose down` and `down -v`.
+      - ./data:/data
     restart: unless-stopped
     # Optional reverse-proxy example (Caddy): put Caddy/Traefik in front with
     # auth + TLS instead of publishing 8080 directly. Do not expose Bindarr
     # to the public internet without authentication — it has none built in.
-
-volumes:
-  bindarr-data:

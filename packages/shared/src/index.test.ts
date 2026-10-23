@@ -105,6 +105,9 @@ describe("bank items & settings", () => {
     expect(parseBankItem({ id: "x", game: "pokemon" })).toBeNull();
     expect(parseAppSettings({ nope: 1 })).toEqual(defaultSettings());
     expect(parseAppSettings({ visibleGames: ["misc"] }).visibleGames).toEqual(["misc"]);
+    expect(parseAppSettings({ visibleGames: ["misc"] }).navStyle).toBe("segment");
+    expect(parseAppSettings({ navStyle: "icons" }).navStyle).toBe("icons");
+    expect(parseAppSettings({ navStyle: "pills" }).navStyle).toBe("segment");
   });
 });
 

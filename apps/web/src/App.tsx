@@ -35,6 +35,7 @@ import BankPage from "./components/BankPage.js";
 import BindersPage from "./components/BindersPage.js";
 import SettingsPage, { applyTheme, initialTheme } from "./components/SettingsPage.js";
 import ArtistSearchPage from "./components/ArtistSearchPage.js";
+import SubNav from "./components/SubNav.js";
 import { CollectionsPage, TagsPage } from "./components/TaxonomyPages.js";
 import { previousRoute, useRoute, type Route } from "./router.js";
 
@@ -273,18 +274,12 @@ export default function App() {
             </button>
           ))}
         </nav>
-        <nav className="sub-nav" aria-label="Section">
-          {(SECTIONS.find((s) => s.id === sectionForView(view))?.subsections ?? []).map(([key, label]) => (
-            <button
-              key={key}
-              className={`subnav-btn${view === key ? " active" : ""}`}
-              aria-current={view === key || undefined}
-              onClick={() => go(key)}
-            >
-              {label}
-            </button>
-          ))}
-        </nav>
+        <SubNav
+          style={appSettings.navStyle}
+          activeKey={view}
+          onSelect={(key) => go(key as View)}
+          items={(SECTIONS.find((s) => s.id === sectionForView(view))?.subsections ?? []).map(([key, label]) => ({ key, label }))}
+        />
       </header>
 
       {(view === "bank" || view === "wishlist") && (

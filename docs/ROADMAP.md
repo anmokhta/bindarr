@@ -33,6 +33,13 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
   panels. Card forms and filters already use tags (many per card) and
   collection (one per card).
 
+## Open UI decisions
+
+- **Subsection / Settings nav:** production offers segmented / sidebar / icon
+  rail via Settings → Appearance (default segmented). Comparison demos live
+  under Settings → Nav styles (`/settings?tab=nav-styles`); write-up:
+  [ui-subsection-nav.md](ui-subsection-nav.md).
+
 ## Next steps (in order)
 
 1. **Tags & Collections manager** (Bank > Tags, Bank > Collections):
@@ -65,4 +72,5 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 | `/bank/tags` | Bank > Tags (skeleton) |
 | `/bank/collections` | Bank > Collections (skeleton) |
 | `/extras/artist-search` (`/artist-search`) | Extras > Artist Search |
-| `/settings` (`?tab=calls`) | Settings (standalone) |
+| `/settings` (`?tab=calls` / `?tab=nav-styles`) | Settings (standalone; Nav styles demos) |
+| `/extras/nav-styles` | redirects → `/settings?tab=nav-styles` |

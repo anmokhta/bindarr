@@ -26,33 +26,27 @@ any browser on your network and back up one database file.
 docker compose up -d --build
 ```
 
-Open <http://localhost:8080>. Data persists in the `bindarr-data` Docker
-volume (`/data/bindarr.db` in the container) and survives restarts/upgrades.
+Open <http://localhost:8080>. Data lives in the gitignored host folder
+`./data/` (bind-mounted to `/data` in the container as `bindarr.db`). It
+survives restarts, rebuilds, and `docker compose down` / `down -v`.
 
 Useful commands:
 
 ```sh
-docker compose logs -f     # logs
-docker compose down        # stop (data kept)
-docker compose down -v     # stop AND delete all binder data
+mkdir -p data            # created automatically on first run if missing
+docker compose logs -f   # logs
+docker compose down      # stop (./data kept)
 PORT=9000 docker compose up -d   # different host port
 ```
 
 ### Backup / restore
 
-Named-volume setup (default):
-
 ```sh
 # backup
-docker run --rm -v bindarr_bindarr-data:/data -v "$PWD":/backup alpine \
-  tar czf /backup/bindarr-data.tar.gz -C /data .
+tar czf bindarr-data.tar.gz -C data .
 # restore (with Bindarr stopped)
-docker run --rm -v bindarr_bindarr-data:/data -v "$PWD":/backup alpine \
-  sh -c 'rm -rf /data/*; tar xzf /backup/bindarr-data.tar.gz -C /data'
+mkdir -p data && tar xzf bindarr-data.tar.gz -C data
 ```
-
-Or switch `docker-compose.yml` to the commented `./data:/data` bind mount and
-just copy the `data/` folder (contains `bindarr.db`).
 
 > **Security:** Bindarr has **no built-in authentication**. Run it on a
 > trusted LAN, or put a reverse proxy with auth/TLS (Caddy, Traefik, …) in

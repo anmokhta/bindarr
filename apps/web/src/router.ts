@@ -24,6 +24,7 @@ const ROUTES: Route[] = [
 /** Canonical route for the current URL, applying legacy redirects. */
 export function currentRoute(): Route {
   const path = window.location.pathname;
+  if (path === "/extras/nav-styles") return "/settings";
   if (ROUTES.includes(path as Route)) return path as Route;
   switch (path) {
     case "/":
@@ -44,8 +45,13 @@ export function currentRoute(): Route {
 
 /** If the URL is a legacy alias, replace it with the canonical route (preserving query). */
 function applyRedirect(): boolean {
+  const path = window.location.pathname;
+  if (path === "/extras/nav-styles") {
+    window.history.replaceState({}, "", "/settings?tab=nav-styles");
+    return true;
+  }
   const canonical = currentRoute();
-  if (window.location.pathname !== canonical) {
+  if (path !== canonical) {
     window.history.replaceState({}, "", canonical + window.location.search);
     return true;
   }

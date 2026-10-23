@@ -1,9 +1,24 @@
 import { useEffect, useState } from "react";
-import { GAMES, type AppSettings, type GameId } from "@bindarr/shared";
+import { GAMES, NAV_STYLES, type AppSettings, type GameId, type NavStyle } from "@bindarr/shared";
 import { fetchCalls, fetchCallStats, type ApiCallRow } from "../api.js";
+import NavStylesPage from "./NavStylesPage.js";
+import SubNav from "./SubNav.js";
 
 type Theme = "auto" | "light" | "dark";
-type SettingsTab = "general" | "calls";
+type SettingsTab = "general" | "calls" | "nav-styles";
+
+function tabFromUrl(): SettingsTab {
+  const t = new URLSearchParams(window.location.search).get("tab");
+  if (t === "calls") return "calls";
+  if (t === "nav-styles") return "nav-styles";
+  return "general";
+}
+
+function urlForTab(tab: SettingsTab): string {
+  if (tab === "calls") return "/settings?tab=calls";
+  if (tab === "nav-styles") return "/settings?tab=nav-styles";
+  return "/settings";
+}
 
 export function applyTheme(theme: Theme) {
   if (theme === "auto") delete document.documentElement.dataset.theme;
@@ -88,22 +103,26 @@ export default function SettingsPage({
 }) {
   const [theme, setTheme] = useState<Theme>(initialTheme);
   const [server, setServer] = useState<string>("Checking…");
-  const [tab, setTab] = useState<SettingsTab>(() =>
-    new URLSearchParams(window.location.search).get("tab") === "calls" ? "calls" : "general",
-  );
+  const [tab, setTab] = useState<SettingsTab>(tabFromUrl);
   const visibleGames = settings?.visibleGames ?? ["pokemon", "misc"];
+  const navStyle: NavStyle = settings?.navStyle ?? "segment";
 
   function selectTab(next: SettingsTab) {
     setTab(next);
-    window.history.replaceState({}, "", next === "calls" ? "/settings?tab=calls" : "/settings");
+    window.history.replaceState({}, "", urlForTab(next));
+  }
+
+  function patchSettings(patch: Partial<AppSettings>) {
+    if (!settings || !onSaveSettings) return;
+    void onSaveSettings({ ...settings, ...patch });
   }
 
   function toggleGame(id: string, visible: boolean) {
-    if (!settings || !onSaveSettings) return;
+    if (!settings) return;
     const next = visible
       ? [...new Set([...settings.visibleGames, id])]
       : settings.visibleGames.filter((g) => g !== id);
-    void onSaveSettings({ visibleGames: next });
+    patchSettings({ visibleGames: next });
   }
 
   useEffect(() => { applyTheme(theme); }, [theme]);
@@ -132,12 +151,19 @@ export default function SettingsPage({
         )}
       </div>
 
-      <div className="settings-tabs" role="tablist" aria-label="Settings sections">
-        <button role="tab" aria-selected={tab === "general"} className={`game-tab${tab === "general" ? " active" : ""}`} onClick={() => selectTab("general")}>General</button>
-        <button role="tab" aria-selected={tab === "calls"} className={`game-tab${tab === "calls" ? " active" : ""}`} onClick={() => selectTab("calls")}>Calls</button>
-      </div>
+      <SubNav
+        style={navStyle}
+        label="Settings sections"
+        activeKey={tab}
+        onSelect={(key) => selectTab(key as SettingsTab)}
+        items={[
+          { key: "general", label: "General" },
+          { key: "calls", label: "Calls" },
+          { key: "nav-styles", label: "Nav styles" },
+        ]}
+      />
 
-      {tab === "calls" ? <CallsTab /> : (
+      {tab === "calls" ? <CallsTab /> : tab === "nav-styles" ? <NavStylesPage embedded /> : (
       <>
       <div className="settings-group">
         <h3>Appearance</h3>
@@ -149,6 +175,22 @@ export default function SettingsPage({
             <option value="dark">Dark</option>
           </select>
         </label>
+        <label className="settings-row">
+          <span>Subsection nav</span>
+          <select
+            aria-label="Subsection nav"
+            value={navStyle}
+            onChange={(e) => patchSettings({ navStyle: e.target.value as NavStyle })}
+          >
+            {(Object.entries(NAV_STYLES) as [NavStyle, { label: string }][]).map(([id, meta]) => (
+              <option key={id} value={id}>{meta.label}</option>
+            ))}
+          </select>
+        </label>
+        <p className="settings-text">
+          Applies to Bank/Binders/Extras subsections and this Settings tab row.
+          Compare all patterns (including retired ones) under Settings → Nav styles.
+        </p>
       </div>
 
       <div className="settings-group">
@@ -182,9 +224,9 @@ export default function SettingsPage({
         <h3>Server</h3>
         <p className="settings-text">{server}</p>
         <p className="settings-text">
-          Binder data is stored server-side in SQLite. Back up the Docker
-          <code> /data </code>
-          volume (see README) to keep a copy.
+          Binder data is stored server-side in SQLite at
+          <code> ./data/bindarr.db </code>
+          on the host (Docker bind-mount). Copy that folder to back up — see README.
         </p>
       </div>
 
