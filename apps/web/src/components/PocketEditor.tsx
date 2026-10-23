@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { TAGS, bankItemToSlot, type BankItem, type CardSlot, type CardTag } from "@bindarr/shared";
-import { lookupCards, type TcgCard } from "../api.js";
+import { type TcgCard } from "../api.js";
+import { lookupCardsWithFallbacks } from "../bankEnrich.js";
 import BankPicker from "./BankPicker.js";
 import ArtistLinkButton from "./ArtistLinkButton.js";
 
@@ -61,7 +62,8 @@ export default function PocketEditor({
     setStatus("Searching…");
     setResults([]);
     try {
-      const cards = await lookupCards(term, qNum);
+      // Pocket note often holds "Set #number"; pass empty set — number box is the reliable field.
+      const cards = await lookupCardsWithFallbacks({ name: term, number: qNum, set: "" });
       if (!cards.length) setStatus(`No matches for "${term}".`);
       else {
         setStatus(`${cards.length} match(es) — click one to fill in:`);

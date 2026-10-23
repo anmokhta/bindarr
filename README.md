@@ -9,7 +9,8 @@ The planner shows Page 1, then two-page spreads, with a page-size slider.
 Cards live in one bank with independent have/want flags — Bank → Cards is
 the have view, Bank → Wishlist the want view (wishlist cards render in
 black & white in binders until marked obtained). Both views import/export
-JSON/CSV. Bank → Tags and Bank → Collections preview the tags/collections
+JSON/CSV (including PriceCharting collection CSV exports). Bank → Tags and
+Bank → Collections preview the tags/collections
 already in use; management and auto-tag rules are planned (see
 [docs/ROADMAP.md](docs/ROADMAP.md)). Includes Pokémon TCG lookup via
 pokemontcg.io, drag-to-swap pockets, and automatic saving. External API

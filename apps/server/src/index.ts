@@ -294,12 +294,14 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   };
 
   app.get("/api/lookup", async (req, reply) => {
-    const { name, number } = (req.query ?? {}) as { name?: string; number?: string };
+    const { name, number, set } = (req.query ?? {}) as { name?: string; number?: string; set?: string };
     const cleanName = (name ?? "").replace(/"/g, "").trim();
     if (!cleanName) return reply.code(400).send({ error: "A card name is required to search" });
     const cleanNumber = (number ?? "").trim();
+    const cleanSet = (set ?? "").replace(/"/g, "").trim();
     let q = `name:"${cleanName}"`;
     if (cleanNumber) q += ` number:${cleanNumber.replace(/[^\w-]/g, "")}`;
+    if (cleanSet) q += ` set.name:"${cleanSet}"`;
     const cacheKey = q;
 
     const cachedRow = () =>

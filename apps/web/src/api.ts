@@ -163,9 +163,10 @@ export async function saveSettings(settings: AppSettings): Promise<AppSettings> 
   return parseAppSettings(data.settings);
 }
 
-export async function lookupCards(name: string, number: string): Promise<TcgCard[]> {
+export async function lookupCards(name: string, number: string, set = ""): Promise<TcgCard[]> {
   const params = new URLSearchParams({ name });
   if (number.trim()) params.set("number", number.trim());
+  if (set.trim()) params.set("set", set.trim());
   const res = await fetch(`/api/lookup?${params}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Lookup failed (HTTP ${res.status})`);

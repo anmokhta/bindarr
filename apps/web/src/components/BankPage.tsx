@@ -4,8 +4,20 @@ import { BankFiltersBar, emptyFilters, filterBankItems, type BankFilters } from 
 import BankItemForm from "./BankItemForm.js";
 import ArtistLinkButton from "./ArtistLinkButton.js";
 import IconButton, { PencilIcon, TrashIcon } from "./IconButton.js";
+import ImportPreviewModal from "./ImportPreviewModal.js";
 import Modal from "./Modal.js";
 import { importBankItems } from "../api.js";
+import {
+  applyFirstLookupToItem,
+  filterByImage,
+  lookupCardsWithFallbacks,
+  needsImageEnrich,
+  sortBankItems,
+  type BankSortBy,
+  type BankSortOrder,
+  type ImageFilter,
+} from "../bankEnrich.js";
+import { parseBankImport, type BankImportFormat } from "../bankImport.js";
 
 export type CollectionMode = "bank" | "wishlist";
 
@@ -14,43 +26,6 @@ function toCsv(items: BankItem[]): string {
   const header = ["name", "set", "number", "artist", "evolutionLine", "collection", "tags", "have", "want", "image"];
   const rows = items.map((i) => [i.name, i.set, i.number, i.artist ?? "", i.evolutionLine ?? "", i.collection ?? "", i.tags.join("; "), i.have, i.want, i.image ?? ""].map(esc).join(","));
   return [header.join(","), ...rows].join("\n");
-}
-
-function parseCsv(text: string, game: string): Record<string, unknown>[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  if (lines.length < 2) return [];
-  const split = (line: string) => {
-    const out: string[] = [];
-    let cur = ""; let quoted = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (quoted && ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
-      else if (ch === '"') quoted = !quoted;
-      else if (ch === "," && !quoted) { out.push(cur); cur = ""; }
-      else cur += ch;
-    }
-    out.push(cur);
-    return out.map((s) => s.trim());
-  };
-  const header = split(lines[0]).map((h) => h.toLowerCase());
-  return lines.slice(1).map((line) => {
-    const cells = split(line);
-    const row: Record<string, string> = {};
-    header.forEach((h, i) => { row[h] = cells[i] ?? ""; });
-    return {
-      game,
-      name: row.name ?? "",
-      set: row.set ?? "",
-      number: row.number ?? "",
-      artist: row.artist || null,
-      evolutionLine: row.evolutionline || null,
-      collection: row.collection || null,
-      tags: (row.tags ?? "").split(";").map((t) => t.trim()).filter(Boolean),
-      have: row.have !== "false",
-      want: row.want === "true",
-      image: row.image || null,
-    };
-  }).filter((r) => r.name);
 }
 
 function download(filename: string, content: string, type: string) {
@@ -90,12 +65,31 @@ export default function BankPage({
   const [notice, setNotice] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const [importPreview, setImportPreview] = useState<{
+    items: Record<string, unknown>[];
+    format: BankImportFormat;
+  } | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  const [enriching, setEnriching] = useState(false);
+  const enrichCancelRef = useRef(false);
+  const [imageFilter, setImageFilter] = useState<ImageFilter>("all");
+  const [sortBy, setSortBy] = useState<BankSortBy>("name");
+  const [sortOrder, setSortOrder] = useState<BankSortOrder>("asc");
+
   const activeGame = visibleBanks.includes(game) ? game : (visibleBanks[0] ?? "pokemon");
   const inMode = useMemo(() => items.filter((i) => (mode === "bank" ? i.have : i.want)), [items, mode]);
   const inGame = useMemo(() => inMode.filter((i) => i.game === activeGame), [inMode, activeGame]);
-  const visible = useMemo(() => filterBankItems(inGame, filters), [inGame, filters]);
+  const visible = useMemo(() => {
+    const filtered = filterByImage(filterBankItems(inGame, filters), imageFilter);
+    return sortBankItems(filtered, sortBy, sortOrder);
+  }, [inGame, filters, imageFilter, sortBy, sortOrder]);
   const isWishlist = mode === "wishlist";
   const formOpen = showForm || !!editing;
+  const missingImageCount = useMemo(
+    () => (activeGame === "misc" ? 0 : visible.filter(needsImageEnrich).length),
+    [visible, activeGame],
+  );
 
   const formTitle = editing
     ? `Edit ${editing.name}`
@@ -108,16 +102,76 @@ export default function BankPage({
   async function handleImportFile(file: File) {
     try {
       const text = await file.text();
-      const parsed = file.name.endsWith(".csv") || !text.trim().startsWith("[")
-        ? parseCsv(text, activeGame)
-        : (JSON.parse(text) as Record<string, unknown>[]);
-      if (!parsed.length) { setNotice("No importable items found in that file."); return; }
-      const result = await importBankItems(parsed);
-      await onImported();
-      setNotice(`Imported: ${result.created} new, ${result.updated} updated.`);
+      const { format, items: parsed } = parseBankImport(text, activeGame, file.name);
+      if (!parsed.length) {
+        setNotice("No importable items found in that file.");
+        return;
+      }
+      setImportPreview({ items: parsed, format });
     } catch {
       setNotice("Import failed — check the file format and try again.");
     }
+  }
+
+  async function confirmImport(selected: Record<string, unknown>[]) {
+    if (!importPreview || !selected.length) return;
+    setImporting(true);
+    try {
+      const result = await importBankItems(selected);
+      await onImported();
+      const source = importPreview.format === "pricecharting" ? " from PriceCharting" : "";
+      setNotice(`Imported${source}: ${result.created} new, ${result.updated} updated.`);
+      setImportPreview(null);
+    } catch {
+      setNotice("Import failed — check the file format and try again.");
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  async function fillMissingImages() {
+    if (activeGame === "misc" || enriching) return;
+    const targets = visible.filter(needsImageEnrich);
+    if (!targets.length) {
+      setNotice("No cards missing images in the current view.");
+      return;
+    }
+    const ok = window.confirm(
+      `Look up ${targets.length} card${targets.length === 1 ? "" : "s"} on Pokémon TCG and fill missing image (and empty fields) from the first match?`,
+    );
+    if (!ok) return;
+
+    enrichCancelRef.current = false;
+    setEnriching(true);
+    let filled = 0;
+    let skipped = 0;
+    let errors = 0;
+
+    for (let i = 0; i < targets.length; i++) {
+      if (enrichCancelRef.current) break;
+      const item = targets[i];
+      setNotice(`Looking up ${i + 1} of ${targets.length}: ${item.name}…`);
+      try {
+        const cards = await lookupCardsWithFallbacks({
+          name: item.name,
+          number: item.number ?? "",
+          set: item.set ?? "",
+        });
+        if (!cards.length || !cards[0].imageSmall) {
+          skipped += 1;
+          continue;
+        }
+        const patch = applyFirstLookupToItem(item, cards[0]);
+        await onUpdate(item.id, patch);
+        filled += 1;
+      } catch {
+        errors += 1;
+      }
+    }
+
+    const stopped = enrichCancelRef.current ? " (stopped early)" : "";
+    setNotice(`Filled ${filled} · skipped ${skipped} (no match) · ${errors} error${errors === 1 ? "" : "s"}${stopped}.`);
+    setEnriching(false);
   }
 
   function closeForm() {
@@ -155,6 +209,41 @@ export default function BankPage({
         <div className="collection-main">
           <BankFiltersBar items={inGame} filters={filters} onChange={setFilters} />
 
+          <div className="bank-view-controls">
+            <div className="bank-flag-toggle" role="group" aria-label="Picture filter">
+              {([
+                ["all", "All"],
+                ["with", "With pictures"],
+                ["without", "Without pictures"],
+              ] as const).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  className={`game-tab${imageFilter === id ? " active" : ""}`}
+                  onClick={() => setImageFilter(id)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <label className="bank-sort-control">
+              <span>Sort by</span>
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value as BankSortBy)} aria-label="Sort by">
+                <option value="name">Name</option>
+                <option value="set">Set</option>
+                <option value="number">Number</option>
+                <option value="artist">Artist</option>
+              </select>
+            </label>
+            <label className="bank-sort-control">
+              <span>Order</span>
+              <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value as BankSortOrder)} aria-label="Sort order">
+                <option value="asc">Ascending</option>
+                <option value="desc">Descending</option>
+              </select>
+            </label>
+          </div>
+
           <div className="bank-actions-row">
             <button
               type="button"
@@ -163,6 +252,27 @@ export default function BankPage({
             >
               {activeGame === "misc" ? "+ Add misc item" : isWishlist ? "+ Add wanted card" : "+ Add card"}
             </button>
+            {activeGame !== "misc" && (
+              enriching ? (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { enrichCancelRef.current = true; }}
+                >
+                  Stop filling
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={missingImageCount === 0}
+                  title={missingImageCount === 0 ? "No cards missing images in this view" : undefined}
+                  onClick={() => void fillMissingImages()}
+                >
+                  Fill missing images{missingImageCount > 0 ? ` (${missingImageCount})` : ""}
+                </button>
+              )
+            )}
             <span className="bank-count">{visible.length} of {inGame.length} item{inGame.length === 1 ? "" : "s"}</span>
             <span className="export-import">
               <button
@@ -192,6 +302,16 @@ export default function BankPage({
             </span>
           </div>
           {notice && <p className="import-notice" role="status">{notice}</p>}
+
+          {importPreview && (
+            <ImportPreviewModal
+              items={importPreview.items}
+              format={importPreview.format}
+              importing={importing}
+              onCancel={() => { if (!importing) setImportPreview(null); }}
+              onConfirm={(selected) => void confirmImport(selected)}
+            />
+          )}
 
           {formOpen && (
             <Modal title={formTitle} onClose={closeForm}>

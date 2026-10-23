@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { GAMES, type BankItem } from "@bindarr/shared";
-import { lookupCards, type TcgCard } from "../api.js";
+import { type TcgCard } from "../api.js";
+import { lookupCardsWithFallbacks } from "../bankEnrich.js";
 
 export default function BankItemForm({
   game,
@@ -43,7 +44,7 @@ export default function BankItemForm({
     if (!name.trim()) { setLookupStatus("Type a name first."); return; }
     setLookupStatus("Searching…");
     try {
-      const cards = await lookupCards(name.trim(), number);
+      const cards = await lookupCardsWithFallbacks({ name: name.trim(), number, set });
       setLookupResults(cards);
       setLookupStatus(cards.length ? `${cards.length} match(es) — click to fill:` : "No matches.");
     } catch (e) {
