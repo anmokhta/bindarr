@@ -79,10 +79,11 @@ npm run desktop:dev    # run unpackaged
 npm run desktop:dist   # package for your OS into apps/desktop-electron/dist
 ```
 
-Tagged releases (`v*`) or manual dispatch of the **Desktop** GitHub Actions
-workflow build unsigned `.dmg` / `.exe` (NSIS) / `.AppImage` + `.deb`
-artifacts for macOS/Windows/Linux. They are **not code-signed/notarized**,
-so macOS/Windows will warn on first launch. Why Electron over Tauri:
+Every push and pull request runs the **Desktop** GitHub Actions workflow,
+which builds unsigned macOS (`.dmg`), Windows (NSIS `.exe`), and Linux
+(`.AppImage` + `.deb`) artifacts and uploads them for that commit. They are
+**not code-signed/notarized**, so macOS/Windows will warn on first launch.
+Why Electron over Tauri:
 [docs/adr/0001-desktop-shell.md](docs/adr/0001-desktop-shell.md).
 
 ## Coming from the old single-file planner?

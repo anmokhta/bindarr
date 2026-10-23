@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 test("settings subsection nav switches between segment, sidebar, and icons", async ({ page }) => {
-  await page.goto("/settings");
+  await page.goto("/settings?tab=nav-styles");
   const picker = page.getByLabel("Subsection nav");
+  await picker.selectOption("segment");
   await expect(picker).toHaveValue("segment");
 
   const settingsNav = page.getByRole("navigation", { name: "Settings sections" });

@@ -274,13 +274,16 @@ export default function App() {
             </button>
           ))}
         </nav>
+      </header>
+
+      <div className={`app-body nav-layout-${appSettings.navStyle}`}>
         <SubNav
           style={appSettings.navStyle}
           activeKey={view}
           onSelect={(key) => go(key as View)}
           items={(SECTIONS.find((s) => s.id === sectionForView(view))?.subsections ?? []).map(([key, label]) => ({ key, label }))}
         />
-      </header>
+        <div className="app-main">
 
       {(view === "bank" || view === "wishlist") && (
         <BankPage
@@ -512,6 +515,8 @@ export default function App() {
       </div>
       </>
       )}
+        </div>
+      </div>
     </div>
   );
 }

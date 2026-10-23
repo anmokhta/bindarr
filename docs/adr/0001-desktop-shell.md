@@ -38,8 +38,8 @@ package, which matters more for a self-hosted personal tool than bundle size.
 
 ## Consequences
 - Larger downloads (~245 MB macOS app, mostly Chromium + backend deps).
-- Unsigned artifacts for now: CI builds `.dmg` / NSIS `.exe` / `.AppImage`+`.deb`
-  without code-signing/notarization; macOS/Windows will warn on first launch
-  until signing certificates are added.
+- Unsigned artifacts for now: CI builds `.dmg` / NSIS `.exe` /
+  `.AppImage`+`.deb` on every push/PR without code-signing/notarization;
+  macOS/Windows will warn on first launch until signing certificates are added.
 - The Tauri spike was deleted; revisit only if bundle size becomes a real
   problem and a Rust/sidecar pipeline is worth it.

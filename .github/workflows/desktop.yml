@@ -1,16 +1,22 @@
 name: Desktop
 
 on:
-  workflow_dispatch:
   push:
-    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
   build:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: macos-latest
+            artifact: dmg
+          - os: windows-latest
+            artifact: exe
+          - os: ubuntu-latest
+            artifact: linux
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -27,10 +33,11 @@ jobs:
       - run: npm run dist -w @bindarr/desktop-electron
       - uses: actions/upload-artifact@v4
         with:
-          name: bindarr-${{ matrix.os }}
+          name: bindarr-${{ matrix.artifact }}-${{ github.sha }}
           path: |
             apps/desktop-electron/dist/*.dmg
             apps/desktop-electron/dist/*.exe
             apps/desktop-electron/dist/*.AppImage
             apps/desktop-electron/dist/*.deb
-          if-no-files-found: warn
+          if-no-files-found: error
+          retention-days: 14

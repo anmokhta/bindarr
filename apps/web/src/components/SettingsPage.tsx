@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GAMES, NAV_STYLES, type AppSettings, type GameId, type NavStyle } from "@bindarr/shared";
+import { GAMES, type AppSettings, type GameId, type NavStyle } from "@bindarr/shared";
 import { fetchCalls, fetchCallStats, type ApiCallRow } from "../api.js";
 import NavStylesPage from "./NavStylesPage.js";
 import SubNav from "./SubNav.js";
@@ -151,105 +151,101 @@ export default function SettingsPage({
         )}
       </div>
 
-      <SubNav
-        style={navStyle}
-        label="Settings sections"
-        activeKey={tab}
-        onSelect={(key) => selectTab(key as SettingsTab)}
-        items={[
-          { key: "general", label: "General" },
-          { key: "calls", label: "Calls" },
-          { key: "nav-styles", label: "Nav styles" },
-        ]}
-      />
-
-      {tab === "calls" ? <CallsTab /> : tab === "nav-styles" ? <NavStylesPage embedded /> : (
-      <>
-      <div className="settings-group">
-        <h3>Appearance</h3>
-        <label className="settings-row">
-          <span>Theme</span>
-          <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
-            <option value="auto">Match system</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
-          </select>
-        </label>
-        <label className="settings-row">
-          <span>Subsection nav</span>
-          <select
-            aria-label="Subsection nav"
-            value={navStyle}
-            onChange={(e) => patchSettings({ navStyle: e.target.value as NavStyle })}
-          >
-            {(Object.entries(NAV_STYLES) as [NavStyle, { label: string }][]).map(([id, meta]) => (
-              <option key={id} value={id}>{meta.label}</option>
-            ))}
-          </select>
-        </label>
-        <p className="settings-text">
-          Applies to Bank/Binders/Extras subsections and this Settings tab row.
-          Compare all patterns (including retired ones) under Settings → Nav styles.
-        </p>
-      </div>
-
-      <div className="settings-group">
-        <h3>Games</h3>
-        <p className="settings-text">Choose which game banks show up. Each game gets its own bank; only Pokémon has card lookup today.</p>
-        {(Object.entries(GAMES) as [GameId, (typeof GAMES)[GameId]][]).map(([id, game]) => (
-          <label key={id} className="settings-row">
-            <span>
-              {game.label} Bank
-              {!game.implemented && <span className="settings-badge">not yet supported</span>}
-            </span>
-            <input
-              type="checkbox"
-              disabled={!game.implemented}
-              checked={game.implemented && visibleGames.includes(id)}
-              onChange={(e) => toggleGame(id, e.target.checked)}
+      <div className={`app-body nav-layout-${navStyle}`}>
+        <SubNav
+          style={navStyle}
+          label="Settings sections"
+          activeKey={tab}
+          onSelect={(key) => selectTab(key as SettingsTab)}
+          items={[
+            { key: "general", label: "General" },
+            { key: "nav-styles", label: "Nav styles" },
+            { key: "calls", label: "Calls" },
+          ]}
+        />
+        <div className="app-main">
+          {tab === "calls" ? <CallsTab /> : tab === "nav-styles" ? (
+            <NavStylesPage
+              embedded
+              navStyle={navStyle}
+              onNavStyleChange={(style) => patchSettings({ navStyle: style })}
             />
-          </label>
-        ))}
-        <label className="settings-row">
-          <span>Misc Bank <span className="settings-badge">sleeves, Carddass &amp; other items</span></span>
-          <input
-            type="checkbox"
-            checked={visibleGames.includes("misc")}
-            onChange={(e) => toggleGame("misc", e.target.checked)}
-          />
-        </label>
-      </div>
+          ) : (
+          <>
+          <div className="settings-group">
+            <h3>Appearance</h3>
+            <label className="settings-row">
+              <span>Theme</span>
+              <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)}>
+                <option value="auto">Match system</option>
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+              </select>
+            </label>
+            <p className="settings-text">
+              Subsection tab chrome is under Settings → Nav styles.
+            </p>
+          </div>
 
-      <div className="settings-group">
-        <h3>Server</h3>
-        <p className="settings-text">{server}</p>
-        <p className="settings-text">
-          Binder data is stored server-side in SQLite at
-          <code> ./data/bindarr.db </code>
-          on the host (Docker bind-mount). Copy that folder to back up — see README.
-        </p>
-      </div>
+          <div className="settings-group">
+            <h3>Games</h3>
+            <p className="settings-text">Choose which game banks show up. Each game gets its own bank; only Pokémon has card lookup today.</p>
+            {(Object.entries(GAMES) as [GameId, (typeof GAMES)[GameId]][]).map(([id, game]) => (
+              <label key={id} className="settings-row">
+                <span>
+                  {game.label} Bank
+                  {!game.implemented && <span className="settings-badge">not yet supported</span>}
+                </span>
+                <input
+                  type="checkbox"
+                  disabled={!game.implemented}
+                  checked={game.implemented && visibleGames.includes(id)}
+                  onChange={(e) => toggleGame(id, e.target.checked)}
+                />
+              </label>
+            ))}
+            <label className="settings-row">
+              <span>Misc Bank <span className="settings-badge">sleeves, Carddass &amp; other items</span></span>
+              <input
+                type="checkbox"
+                checked={visibleGames.includes("misc")}
+                onChange={(e) => toggleGame("misc", e.target.checked)}
+              />
+            </label>
+          </div>
 
-      <div className="settings-group">
-        <h3>Pokémon TCG lookup</h3>
-        <p className="settings-text">
-          Lookups run through your Bindarr server, which retries the free
-          pokemontcg.io API and caches results — so repeat searches keep working
-          during API hiccups. For higher rate limits, set
-          <code> POKEMONTCG_API_KEY </code>
-          on the server (free key from pokemontcg.io).
-        </p>
-      </div>
+          <div className="settings-group">
+            <h3>Server</h3>
+            <p className="settings-text">{server}</p>
+            <p className="settings-text">
+              Binder data is stored server-side in SQLite at
+              <code> ./data/bindarr.db </code>
+              on the host (Docker bind-mount). Copy that folder to back up — see README.
+            </p>
+          </div>
 
-      <div className="settings-group">
-        <h3>Security</h3>
-        <p className="settings-text">
-          Bindarr has no built-in accounts or passwords. Keep it on a trusted
-          home network, or put a reverse proxy with authentication in front of it.
-        </p>
+          <div className="settings-group">
+            <h3>Pokémon TCG lookup</h3>
+            <p className="settings-text">
+              Lookups run through your Bindarr server, which retries the free
+              pokemontcg.io API and caches results — so repeat searches keep working
+              during API hiccups. For higher rate limits, set
+              <code> POKEMONTCG_API_KEY </code>
+              on the server (free key from pokemontcg.io).
+            </p>
+          </div>
+
+          <div className="settings-group">
+            <h3>Security</h3>
+            <p className="settings-text">
+              Bindarr has no built-in accounts or passwords. Keep it on a trusted
+              home network, or put a reverse proxy with authentication in front of it.
+            </p>
+          </div>
+          </>
+          )}
+        </div>
       </div>
-      </>
-      )}
     </section>
   );
 }

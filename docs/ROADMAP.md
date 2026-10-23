@@ -35,9 +35,8 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 
 ## Open UI decisions
 
-- **Subsection / Settings nav:** production offers segmented / sidebar / icon
-  rail via Settings → Appearance (default segmented). Comparison demos live
-  under Settings → Nav styles (`/settings?tab=nav-styles`); write-up:
+- **Subsection / Settings nav:** segmented / sidebar / icon rail via
+  Settings → Nav styles (`/settings?tab=nav-styles`); write-up:
   [ui-subsection-nav.md](ui-subsection-nav.md).
 
 ## Next steps (in order)
