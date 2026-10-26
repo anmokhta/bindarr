@@ -5,8 +5,8 @@ test("nav styles live under Settings and demos are clickable", async ({ page }) 
   await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
   const settingsNav = page.getByRole("navigation", { name: "Settings sections" });
   await expect(settingsNav.getByRole("button", { name: "Nav styles" })).toHaveClass(/active/);
-  // Calls is last.
-  await expect(settingsNav.getByRole("button").nth(2)).toHaveText("Calls");
+  // Logs is last.
+  await expect(settingsNav.getByRole("button").nth(2)).toHaveText("Logs");
 
   const picker = page.getByLabel("Subsection nav");
   await picker.selectOption("segment");
