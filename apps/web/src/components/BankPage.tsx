@@ -9,9 +9,13 @@ import Modal from "./Modal.js";
 import { importBankItems } from "../api.js";
 import {
   applyFirstLookupToItem,
+  clearFalseLookupMatch,
   filterByImage,
+  hasFalseLookupMatch,
   lookupCardsWithFallbacks,
   needsImageEnrich,
+  pickLookupCard,
+  shouldSkipAutoIdentify,
   sortBankItems,
   type BankSortBy,
   type BankSortOrder,
@@ -154,15 +158,35 @@ export default function BankPage({
 
   async function identifyCards(targets: BankItem[]) {
     if (activeGame === "misc" || enriching) return;
-    const list = targets.filter(needsImageEnrich);
-    if (!list.length) {
+
+    const repairCount = targets.filter(hasFalseLookupMatch).length;
+    const listPreview = targets.filter(
+      (item) => needsImageEnrich(item) || hasFalseLookupMatch(item),
+    );
+    if (!listPreview.length) {
       setNotice("No cards missing images in the current selection.");
       return;
     }
     const ok = window.confirm(
-      `Identify ${list.length} card${list.length === 1 ? "" : "s"} on Pokémon TCG and fill missing image (and empty fields) from the first match?`,
+      `Identify ${listPreview.length} card${listPreview.length === 1 ? "" : "s"} on Pokémon TCG and fill missing image (and empty fields) from the first match?` +
+        (repairCount
+          ? `\n\nAlso clear ${repairCount} false Carddass/Pocket match${repairCount === 1 ? "" : "es"} first.`
+          : ""),
     );
     if (!ok) return;
+
+    // Clear Carddass / JP→Pocket false matches so they can be re-identified (or skipped).
+    const working: BankItem[] = [];
+    for (const item of targets) {
+      if (hasFalseLookupMatch(item)) {
+        const cleared = clearFalseLookupMatch(item);
+        await onUpdate(item.id, cleared);
+        working.push(cleared);
+      } else {
+        working.push(item);
+      }
+    }
+    const list = working.filter(needsImageEnrich);
 
     enrichCancelRef.current = false;
     setEnriching(true);
@@ -178,25 +202,33 @@ export default function BankPage({
       if (enrichCancelRef.current) break;
       const item = list[i];
       setEnrichProgress({ current: i + 1, total: list.length, name: item.name });
+      if (shouldSkipAutoIdentify(item)) {
+        skipped += 1;
+        log.push({ name: item.name, status: "skipped", detail: "Carddass — skipped" });
+        setEnrichLog([...log]);
+        continue;
+      }
       try {
         const cards = await lookupCardsWithFallbacks({
           name: item.name,
           number: item.number ?? "",
           set: item.set ?? "",
+          language: item.language,
         });
-        if (!cards.length) {
+        const card = pickLookupCard(cards);
+        if (!card) {
           skipped += 1;
           log.push({ name: item.name, status: "skipped", detail: "no match" });
           setEnrichLog([...log]);
           continue;
         }
-        if (!cards[0].imageSmall) {
+        if (!card.imageSmall) {
           skipped += 1;
           log.push({ name: item.name, status: "skipped", detail: "match had no image" });
           setEnrichLog([...log]);
           continue;
         }
-        const patch = applyFirstLookupToItem(item, cards[0]);
+        const patch = applyFirstLookupToItem(item, card);
         await onUpdate(item.id, patch);
         filled += 1;
         log.push({ name: item.name, status: "filled" });

@@ -24,7 +24,10 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
   cache, and stale fallback; Artist Search by illustrator; Settings
   migrate for legacy pokemontcg.io image URLs; every upstream attempt
   logged to Settings > Logs (`/settings?tab=calls`) with
-  1h/12h/24h/3d/7d/30d counts.
+  1h/12h/24h/3d/7d/30d counts. PriceCharting Japanese imports set
+  `language=ja` and strip the Japanese set prefix; Identify prefers EN
+  counterparts (drop JP set/number, normalize LV.X / Ex), skips Carddass,
+  and avoids TCG Pocket false matches when a main-TCG hit exists.
 - **Routing**: every screen has a real URL; the task bar is two-level
   (Bank / Binders / Extras + subsections) and old URLs redirect.
 - **Desktop DB share + updates**: Electron first-run Create new / Use

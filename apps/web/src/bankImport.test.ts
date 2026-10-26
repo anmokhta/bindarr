@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeCardLookupName,
   parseBankImportCsv,
   parsePriceChartingProductName,
   parsePriceChartingSet,
@@ -32,10 +33,18 @@ describe("parsePriceChartingProductName", () => {
   });
 });
 
+describe("normalizeCardLookupName", () => {
+  it("normalizes LV.X spacing, Ex, and Kilowattrel typo", () => {
+    expect(normalizeCardLookupName("Palkia G LV. X")).toBe("Palkia G LV.X");
+    expect(normalizeCardLookupName("Flareon Ex")).toBe("Flareon ex");
+    expect(normalizeCardLookupName("Iono's Killowattrel")).toBe("Iono's Kilowattrel");
+  });
+});
+
 describe("parsePriceChartingSet", () => {
-  it("strips Pokemon prefix", () => {
+  it("strips Pokemon and Japanese prefixes", () => {
     expect(parsePriceChartingSet("Pokemon Jungle")).toBe("Jungle");
-    expect(parsePriceChartingSet("Pokemon Japanese Terastal Festival")).toBe("Japanese Terastal Festival");
+    expect(parsePriceChartingSet("Pokemon Japanese Terastal Festival")).toBe("Terastal Festival");
     expect(parsePriceChartingSet("Pokemon Scarlet & Violet 151")).toBe("Scarlet & Violet 151");
   });
 });
@@ -63,15 +72,17 @@ describe("parseBankImportCsv PriceCharting", () => {
       number: "20",
       have: true,
       want: false,
+      language: null,
     });
     expect(String(items[0].note)).toContain("Ungraded");
 
     expect(items[1]).toMatchObject({ name: "Charizard V", set: "Promo", number: "SWSH050" });
     expect(items[2]).toMatchObject({ name: "Sylveon [Holo]", set: "Go", number: "35" });
     expect(items[3]).toMatchObject({
-      name: "Flareon Ex",
-      set: "Japanese Terastal Festival",
+      name: "Flareon ex",
+      set: "Terastal Festival",
       number: "22",
+      language: "ja",
     });
 
     expect(items[4]).toMatchObject({
@@ -85,6 +96,34 @@ describe("parseBankImportCsv PriceCharting", () => {
 
     expect(items[5]).toMatchObject({ name: "Eevee [Reverse Holo]", number: "54" });
     expect(String(items[5].note)).toMatch(/qty 2/);
+  });
+
+  it("marks Japanese console rows and normalizes LV.X / typos", () => {
+    const csv = [
+      HEADER,
+      "1,Prime Catcher #62,Pokemon Japanese Cyber Judge,100,Ungraded,Normal wear,1,,,0,1,2026-09-23,,,,",
+      "2,Gliscor LV. X #141,Pokemon Legends Awakened,100,Ungraded,Normal wear,1,,,0,1,2026-09-23,,,,",
+      "3,Iono's Killowattrel #104,Pokemon Japanese Battle Partners,100,Ungraded,Normal wear,1,,,0,1,2026-09-23,,,,",
+    ].join("\n");
+    const { items } = parseBankImportCsv(csv, "pokemon");
+    expect(items[0]).toMatchObject({
+      name: "Prime Catcher",
+      set: "Cyber Judge",
+      number: "62",
+      language: "ja",
+    });
+    expect(items[1]).toMatchObject({
+      name: "Gliscor LV.X",
+      set: "Legends Awakened",
+      number: "141",
+      language: null,
+    });
+    expect(items[2]).toMatchObject({
+      name: "Iono's Kilowattrel",
+      set: "Battle Partners",
+      number: "104",
+      language: "ja",
+    });
   });
 
   it("still parses Bindarr-native CSV", () => {

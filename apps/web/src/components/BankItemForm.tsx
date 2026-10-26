@@ -45,7 +45,12 @@ export default function BankItemForm({
     setLookupStatus("Searching…");
     try {
       const hadSet = set.trim().length > 0;
-      const cards = await lookupCardsWithFallbacks({ name: name.trim(), number, set });
+      const cards = await lookupCardsWithFallbacks({
+        name: name.trim(),
+        number,
+        set,
+        language: language.trim() || null,
+      });
       setLookupResults(cards);
       if (cards.length) {
         setLookupStatus(`${cards.length} match(es) — click to fill:`);

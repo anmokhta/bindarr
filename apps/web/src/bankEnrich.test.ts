@@ -9,9 +9,14 @@ vi.mock("./api.js", () => ({
 import { lookupCards } from "./api.js";
 import {
   applyFirstLookupToItem,
+  clearFalseLookupMatch,
   filterByImage,
+  hasFalseLookupMatch,
+  isPocketTcgHit,
   lookupCardsWithFallbacks,
   needsImageEnrich,
+  pickLookupCard,
+  shouldSkipAutoIdentify,
   sortBankItems,
   stripBracketTerms,
 } from "./bankEnrich.js";
@@ -81,23 +86,22 @@ describe("lookupCardsWithFallbacks", () => {
       set: "Promo",
     });
     expect(out).toEqual([tcg]);
-    expect(lookupMock).toHaveBeenCalledTimes(2);
     expect(lookupMock).toHaveBeenNthCalledWith(1, "Archeops [Fossil Museum Exclusive]", "51", "Promo");
     expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "Promo");
   });
 
   it("retries without set when strip+set is still empty (Promo / Vaporeon)", async () => {
-    lookupMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([tcg]);
+    lookupMock.mockImplementation(async (name, number, set) => {
+      if (name === "Vaporeon" && number === "168" && set === "") return [tcg];
+      return [];
+    });
     const out = await lookupCardsWithFallbacks({
       name: "Vaporeon [Cosmos Holo]",
       number: "168",
       set: "Promo",
     });
     expect(out).toEqual([tcg]);
-    expect(lookupMock).toHaveBeenCalledTimes(3);
-    expect(lookupMock).toHaveBeenNthCalledWith(1, "Vaporeon [Cosmos Holo]", "168", "Promo");
-    expect(lookupMock).toHaveBeenNthCalledWith(2, "Vaporeon", "168", "Promo");
-    expect(lookupMock).toHaveBeenNthCalledWith(3, "Vaporeon", "168", "");
+    expect(lookupMock.mock.calls.some((c) => c[0] === "Vaporeon" && c[1] === "168" && c[2] === "")).toBe(true);
   });
 
   it("retries without set when name has no brackets but set misses", async () => {
@@ -116,10 +120,89 @@ describe("lookupCardsWithFallbacks", () => {
     expect(lookupMock).toHaveBeenCalledTimes(1);
   });
 
+  it("for Japanese cards drops number after set fails (JP localId ≠ EN)", async () => {
+    lookupMock.mockImplementation(async (name, number, set) => {
+      if (name === "Prime Catcher" && number === "" && set === "") return [tcg];
+      return [];
+    });
+    const out = await lookupCardsWithFallbacks({
+      name: "Prime Catcher",
+      number: "62",
+      set: "Japanese Cyber Judge",
+      language: "ja",
+    });
+    expect(out).toEqual([tcg]);
+    expect(lookupMock.mock.calls.some((c) => c[0] === "Prime Catcher" && c[1] === "" && c[2] === "")).toBe(true);
+  });
+
+  it("strips LV.X when TCGdex omits the suffix", async () => {
+    lookupMock.mockImplementation(async (name, number, set) => {
+      if (name === "Gliscor" && number === "141" && set === "Legends Awakened") return [tcg];
+      return [];
+    });
+    const out = await lookupCardsWithFallbacks({
+      name: "Gliscor LV.X",
+      number: "141",
+      set: "Legends Awakened",
+    });
+    expect(out).toEqual([tcg]);
+    expect(lookupMock.mock.calls.some((c) => c[0] === "Gliscor" && c[1] === "141")).toBe(true);
+  });
+
+  it("normalizes Killowattrel typo before lookup", async () => {
+    lookupMock.mockImplementation(async (name) => {
+      if (name === "Iono's Kilowattrel") return [tcg];
+      return [];
+    });
+    const out = await lookupCardsWithFallbacks({
+      name: "Iono's Killowattrel",
+      number: "104",
+      set: "Battle Partners",
+      language: "ja",
+    });
+    expect(out).toEqual([tcg]);
+    expect(lookupMock.mock.calls.some((c) => c[0] === "Iono's Kilowattrel")).toBe(true);
+  });
+
   it("rethrows errors without retrying", async () => {
     lookupMock.mockRejectedValueOnce(new Error("upstream down"));
     await expect(lookupCardsWithFallbacks({ name: "Pikachu [Holo]" })).rejects.toThrow("upstream down");
     expect(lookupMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("pickLookupCard / false-match repair", () => {
+  const pocket: TcgCard = {
+    ...tcg,
+    id: "A1-181",
+    imageSmall: "https://assets.tcgdex.net/en/tcgp/A1/181/low.webp",
+  };
+  const main: TcgCard = { ...tcg, id: "sv05-157", imageSmall: "https://assets.tcgdex.net/en/sv/sv05/157/low.webp" };
+
+  it("prefers non-Pocket hits", () => {
+    expect(isPocketTcgHit(pocket)).toBe(true);
+    expect(isPocketTcgHit(main)).toBe(false);
+    expect(pickLookupCard([pocket, main])?.id).toBe("sv05-157");
+    expect(pickLookupCard([pocket])?.id).toBe("A1-181");
+  });
+
+  it("detects Carddass skip and false matches", () => {
+    expect(shouldSkipAutoIdentify(item({ id: "1", name: "Koffing", set: "Japanese 1997 Carddass" }))).toBe(true);
+    expect(
+      hasFalseLookupMatch(
+        item({ id: "1", name: "Koffing", set: "Japanese 1997 Carddass", apiId: "sv3pt5-109", image: "https://images.pokemontcg.io/sv3pt5/109.png" }),
+      ),
+    ).toBe(true);
+    expect(
+      hasFalseLookupMatch(
+        item({ id: "2", name: "Meltan", set: "Cyber Judge", language: "ja", apiId: "A1-181", image: "https://assets.tcgdex.net/en/tcgp/A1/181/low.webp" }),
+      ),
+    ).toBe(true);
+    const cleared = clearFalseLookupMatch(
+      item({ id: "2", name: "Meltan", set: "Cyber Judge", language: "ja", apiId: "A1-181", image: "https://x" }),
+    );
+    expect(cleared.apiId).toBeNull();
+    expect(cleared.image).toBeNull();
   });
 });
 

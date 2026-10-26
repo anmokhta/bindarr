@@ -1,5 +1,6 @@
 import type { BankItem } from "@bindarr/shared";
 import { lookupCards, type TcgCard } from "./api.js";
+import { normalizeCardLookupName } from "./bankImport.js";
 
 function isEmpty(value: unknown): boolean {
   if (value == null) return true;
@@ -12,36 +13,137 @@ export function stripBracketTerms(name: string): string {
   return name.replace(/\[[^\]]*]/g, " ").replace(/\s+/g, " ").trim();
 }
 
+export function isJapaneseBankItem(item: Pick<BankItem, "language" | "set">): boolean {
+  if ((item.language ?? "").trim().toLowerCase() === "ja") return true;
+  return /^japanese\b/i.test((item.set ?? "").trim());
+}
+
+export function isCarddassSet(set: string | null | undefined): boolean {
+  return /carddass/i.test(set ?? "");
+}
+
+/** Skip auto-Identify for non-TCG lines that otherwise match EN numbers (e.g. Carddass → 151). */
+export function shouldSkipAutoIdentify(item: Pick<BankItem, "set">): boolean {
+  return isCarddassSet(item.set);
+}
+
+/** TCG Pocket hits (A1/B2/… ids or /tcgp/ assets) — prefer main TCG when available. */
+export function isPocketTcgHit(card: Pick<TcgCard, "id" | "imageSmall">): boolean {
+  if (/\/tcgp\//i.test(card.imageSmall ?? "")) return true;
+  if (/^[AB]\d/i.test(card.id.trim())) return true;
+  return false;
+}
+
+export function isPocketApiId(apiId: string | null | undefined): boolean {
+  if (!apiId) return false;
+  return /^[AB]\d/i.test(apiId.trim());
+}
+
+export function isPocketImageUrl(url: string | null | undefined): boolean {
+  return /\/tcgp\//i.test(url ?? "");
+}
+
+/** Bad auto-matches to clear before re-Identify: Carddass TCG hits, or JP rows glued to Pocket. */
+export function hasFalseLookupMatch(item: BankItem): boolean {
+  if (isCarddassSet(item.set) && (item.apiId || /pokemontcg\.io|assets\.tcgdex\.net/i.test(item.image ?? ""))) {
+    return true;
+  }
+  if (isJapaneseBankItem(item) && (isPocketApiId(item.apiId) || isPocketImageUrl(item.image))) {
+    return true;
+  }
+  return false;
+}
+
+/** Clear apiId + image so Identify can run again. */
+export function clearFalseLookupMatch(item: BankItem): BankItem {
+  return { ...item, apiId: null, image: null };
+}
+
+/** Prefer first non-Pocket TCGdex hit when any exist. */
+export function pickLookupCard(cards: TcgCard[]): TcgCard | null {
+  if (!cards.length) return null;
+  return cards.find((c) => !isPocketTcgHit(c)) ?? cards[0] ?? null;
+}
+
+function stripLvX(name: string): string {
+  return name.replace(/\bLV\.X\b/gi, " ").replace(/\s+/g, " ").trim();
+}
+
 /**
  * Lookup with progressive fallbacks on empty results only (errors rethrow):
  * 1) name + number + set
- * 2) strip `[...]` from name, same number/set
- * 3) if set was set, best name + number with no set (PriceCharting "Promo" ≠ TCG set.name)
+ * 2) normalized / bracket-stripped name, same number/set
+ * 3) drop set (Promo / JP marketing sets ≠ TCGdex set.name)
+ * 4) if Japanese: drop number (JP collector # ≠ EN localId)
+ * 5) if name has LV.X: retry without suffix (TCGdex sometimes omits it)
  */
 export async function lookupCardsWithFallbacks(opts: {
   name: string;
   number?: string;
   set?: string;
+  language?: string | null;
 }): Promise<TcgCard[]> {
   const name = opts.name.trim();
   const number = (opts.number ?? "").trim();
   const set = (opts.set ?? "").trim();
   if (!name) return [];
 
-  let cards = await lookupCards(name, number, set);
-  if (cards.length > 0) return cards;
+  const japanese =
+    (opts.language ?? "").trim().toLowerCase() === "ja" || /^japanese\b/i.test(set);
 
-  const stripped = stripBracketTerms(name);
-  const bestName = stripped && stripped !== name ? stripped : name;
-  if (bestName !== name) {
-    cards = await lookupCards(bestName, number, set);
-    if (cards.length > 0) return cards;
-  }
+  const seen = new Set<string>();
+  const attempts: Array<[string, string, string]> = [];
+  const push = (n: string, num: string, s: string) => {
+    const clean = n.trim();
+    if (!clean) return;
+    const key = `${clean}\0${num}\0${s}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    attempts.push([clean, num, s]);
+  };
+
+  const nameVariants = new Set<string>();
+  nameVariants.add(name);
+  const normalized = normalizeCardLookupName(name);
+  if (normalized) nameVariants.add(normalized);
+  const noBrackets = stripBracketTerms(name);
+  if (noBrackets) nameVariants.add(noBrackets);
+  const normNoBrackets = normalizeCardLookupName(noBrackets);
+  if (normNoBrackets) nameVariants.add(normNoBrackets);
+
+  for (const n of nameVariants) push(n, number, set);
 
   if (set) {
-    cards = await lookupCards(bestName, number, "");
+    for (const n of nameVariants) push(n, number, "");
   }
-  return cards;
+
+  if (japanese && number) {
+    for (const n of nameVariants) {
+      push(n, "", set);
+      push(n, "", "");
+    }
+  }
+
+  const withLvX = [...nameVariants].filter((n) => /\bLV\.X\b/i.test(n));
+  for (const n of withLvX) {
+    const stripped = stripLvX(normalizeCardLookupName(n));
+    if (!stripped || stripped === n) continue;
+    push(stripped, number, set);
+    if (set) push(stripped, number, "");
+    if (japanese) {
+      push(stripped, "", set);
+      push(stripped, "", "");
+    } else if (number) {
+      // EN LV.X naming gaps (e.g. Gliscor): name without LV.X + number + set
+      push(stripped, number, set);
+    }
+  }
+
+  for (const [n, num, s] of attempts) {
+    const cards = await lookupCards(n, num, s);
+    if (cards.length > 0) return cards;
+  }
+  return [];
 }
 
 /** Build a patch from the first TCG lookup hit: set image when missing; fill other empty fields only. */
@@ -54,6 +156,7 @@ export function applyFirstLookupToItem(item: BankItem, card: TcgCard): Record<st
   if (isEmpty(item.apiId) && card.id) {
     patch.apiId = card.id;
   }
+  // Keep PriceCharting / JP set labels; only fill set when empty.
   if (isEmpty(item.set) && card.setName) {
     patch.set = card.setName;
   }

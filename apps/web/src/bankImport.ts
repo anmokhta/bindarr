@@ -33,17 +33,41 @@ function parseCsvRows(text: string): { header: string[]; rows: Record<string, st
   return { header, rows };
 }
 
+/**
+ * Normalize PriceCharting / lookup card names for TCGdex EN:
+ * LV. X → LV.X, trailing Ex → ex, known PC typos.
+ */
+export function normalizeCardLookupName(name: string): string {
+  let n = name.trim();
+  n = n.replace(/Killowattrel/gi, "Kilowattrel");
+  n = n.replace(/\bLV\.\s*X\b/gi, "LV.X");
+  n = n.replace(/(^|\s)Ex\b/g, "$1ex");
+  return n.replace(/\s+/g, " ").trim();
+}
+
 /** "Jolteon #20" / "Sylveon [Holo] #35" / "Charizard V #SWSH050" → name + number */
 export function parsePriceChartingProductName(productName: string): { name: string; number: string } {
   const raw = productName.trim();
   const m = raw.match(/^(.+?)\s+#(\S+)\s*$/);
-  if (m) return { name: m[1].trim(), number: m[2].trim() };
-  return { name: raw, number: "" };
+  if (m) return { name: normalizeCardLookupName(m[1].trim()), number: m[2].trim() };
+  return { name: normalizeCardLookupName(raw), number: "" };
 }
 
-/** "Pokemon Jungle" / "Pokémon Japanese Terastal Festival" → set without leading Pokemon */
+/** True when PriceCharting console-name indicates a Japanese product line. */
+export function isJapaneseConsoleName(consoleName: string): boolean {
+  return /japanese/i.test(consoleName);
+}
+
+/**
+ * "Pokemon Jungle" / "Pokémon Japanese Terastal Festival" → set without
+ * leading Pokemon and without a leading Japanese marker (language carries that).
+ */
 export function parsePriceChartingSet(consoleName: string): string {
-  return consoleName.trim().replace(/^pok[eé]mon\s+/i, "");
+  return consoleName
+    .trim()
+    .replace(/^pok[eé]mon\s+/i, "")
+    .replace(/^japanese\s+/i, "")
+    .trim();
 }
 
 function buildPriceChartingNote(row: Record<string, string>): string {
@@ -66,13 +90,15 @@ function buildPriceChartingNote(row: Record<string, string>): string {
 function mapPriceChartingRow(row: Record<string, string>, game: string): Record<string, unknown> | null {
   const product = (row["product-name"] ?? "").trim();
   if (!product) return null;
+  const consoleName = row["console-name"] ?? "";
   const { name, number } = parsePriceChartingProductName(product);
   if (!name) return null;
   const folder = (row.folder ?? "").trim();
+  const japanese = isJapaneseConsoleName(consoleName);
   return {
     game,
     name,
-    set: parsePriceChartingSet(row["console-name"] ?? ""),
+    set: parsePriceChartingSet(consoleName),
     number,
     artist: null,
     evolutionLine: null,
@@ -82,6 +108,7 @@ function mapPriceChartingRow(row: Record<string, string>, game: string): Record<
     want: false,
     image: null,
     note: buildPriceChartingNote(row),
+    language: japanese ? "ja" : null,
   };
 }
 
@@ -101,6 +128,7 @@ function mapBindarrRow(row: Record<string, string>, game: string): Record<string
     want: row.want === "true",
     image: row.image || null,
     note: row.note || "",
+    language: (row.language ?? "").trim() || null,
   };
 }
 
