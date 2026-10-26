@@ -14,9 +14,9 @@ The task bar is three areas, plus Settings.
 
 **Bank** is one card table with independent have and want flags. Bank → Cards is the have view; Bank → Wishlist is the want view. Wishlist cards stay in binders but render grayscale until marked obtained. Cards can carry many tags and one collection. Import and export is JSON and CSV, with dedupe. Games in the model are Pokémon, Magic, Yu-Gi-Oh!, Lorcana, and One Piece, plus a Misc bank. Only Pokémon lookup works today. Add and edit use a modal.
 
-**Extras** is Artist Search: research notes and artofpkm links. It does not fetch results yet. The page title carries a Planned badge, and artist icon buttons elsewhere deep-link here.
+**Extras** is Artist Search: TCGdex illustrator results in-app, with artofpkm as an external secondary link. Artist icon buttons elsewhere deep-link here with `?artist=` prefilled.
 
-**Settings** covers theme, visible games, nav style, the API call log (1h through 30d counts), and a version check against GitHub Releases.
+**Settings** covers theme, visible games, nav style, the API call log (1h through 30d counts), a one-shot migrate for legacy `images.pokemontcg.io` URLs, and a version check against GitHub Releases.
 
 ## UI
 
@@ -47,14 +47,14 @@ Fastify serves the API and, in production, the built UI. SQLite (`better-sqlite3
 | `planner_state` | One JSON document for every binder |
 | `bank_items` | One JSON document per card |
 | `app_settings` | Visible games and nav style |
-| `lookup_cache` | Pokémon TCG responses |
+| `lookup_cache` | Pokémon TCGdex responses |
 | `api_calls` | Every upstream lookup attempt |
 
-API surface: `/api/state`, `/api/bank` (CRUD plus import), `/api/lookup`, `/api/calls`, `/api/settings`, `/api/health`, `/api/version/latest`.
+API surface: `/api/state`, `/api/bank` (CRUD plus import), `/api/lookup`, `/api/lookup/artist`, `/api/migrate/pokemontcg-images`, `/api/calls`, `/api/settings`, `/api/health`, `/api/version/latest`.
 
 A file lock (`apps/server/src/write-lease.ts`) lets only one process write the database. A second instance opens read-only and writes return HTTP 423. Electron’s first run can create a new database or point at an existing one. There is no user authentication. The README expects a trusted LAN or a reverse proxy with auth and TLS.
 
-Pokémon lookup is a server proxy to pokemontcg.io with retry, a SQLite cache, and stale fallback. Each attempt is logged. An optional `POKEMONTCG_API_KEY` is passed through.
+Pokémon lookup uses `@tcgdex/sdk` against `api.tcgdex.net` with retry, a SQLite cache, and stale fallback. Each attempt is logged. No API key is required.
 
 ## Tech stack and how it ships
 
@@ -85,11 +85,11 @@ A pocket stores a copy of the card plus a `bankId`. Editing the bank item does n
 
 ## Outside data
 
-Pokémon lookup goes through the server to pokemontcg.io. Unauthenticated calls fail often, so the proxy retries, can send `POKEMONTCG_API_KEY`, caches successes, and serves the cache when the upstream is down. Card images are remote URLs, not files in the database. Every attempt is written to `api_calls` and shown under Settings → Calls; rows are kept with no pruning yet. A version check calls the GitHub releases API for `anmokhta/bindarr`. Artist Search is deliberately not a scrape of artofpkm; the planned source is the same lookup proxy with `artist:"…"`. Notes: [docs/research/artist-search.md](docs/research/artist-search.md).
+Pokémon lookup goes through the server to TCGdex (`@tcgdex/sdk`). The proxy retries, caches successes, and serves the cache when the upstream is down. Card images are remote TCGdex asset URLs (`…/low.webp`), not files in the database. Settings can rewrite legacy `images.pokemontcg.io` bank/pocket URLs to TCGdex assets. Every attempt is written to `api_calls` and shown under Settings → Logs; rows are kept with no pruning yet. A version check calls the GitHub releases API for `anmokhta/bindarr`. Artist Search uses the same stack filtered by illustrator; artofpkm is an external link only. Notes: [docs/research/artist-search.md](docs/research/artist-search.md).
 
 ## Trust boundary
 
-The server has no accounts. Anyone who can reach the port can read and write the collection. Docker runs as the `node` user, with the API key only in the environment. The intended setup is a trusted LAN, or a reverse proxy that adds auth and TLS.
+The server has no accounts. Anyone who can reach the port can read and write the collection. Docker runs as the `node` user. The intended setup is a trusted LAN, or a reverse proxy that adds auth and TLS.
 
 ## Where preferences live
 

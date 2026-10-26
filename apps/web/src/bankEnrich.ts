@@ -12,7 +12,12 @@ export function stripBracketTerms(name: string): string {
   return name.replace(/\[[^\]]*]/g, " ").replace(/\s+/g, " ").trim();
 }
 
-/** Lookup with set; on empty results only, retry with bracket terms stripped from the name. */
+/**
+ * Lookup with progressive fallbacks on empty results only (errors rethrow):
+ * 1) name + number + set
+ * 2) strip `[...]` from name, same number/set
+ * 3) if set was set, best name + number with no set (PriceCharting "Promo" ≠ TCG set.name)
+ */
 export async function lookupCardsWithFallbacks(opts: {
   name: string;
   number?: string;
@@ -23,12 +28,20 @@ export async function lookupCardsWithFallbacks(opts: {
   const set = (opts.set ?? "").trim();
   if (!name) return [];
 
-  const first = await lookupCards(name, number, set);
-  if (first.length > 0) return first;
+  let cards = await lookupCards(name, number, set);
+  if (cards.length > 0) return cards;
 
   const stripped = stripBracketTerms(name);
-  if (!stripped || stripped === name) return first;
-  return lookupCards(stripped, number, set);
+  const bestName = stripped && stripped !== name ? stripped : name;
+  if (bestName !== name) {
+    cards = await lookupCards(bestName, number, set);
+    if (cards.length > 0) return cards;
+  }
+
+  if (set) {
+    cards = await lookupCards(bestName, number, "");
+  }
+  return cards;
 }
 
 /** Build a patch from the first TCG lookup hit: set image when missing; fill other empty fields only. */

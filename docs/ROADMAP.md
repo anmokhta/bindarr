@@ -20,9 +20,11 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
   render grayscale in binders until marked obtained); per-game bank
   sidebar, filters, JSON/CSV import/export with dedupe; Add/Edit card
   in a modal with shared button styles.
-- **Lookup**: Pokémon TCG proxy with retry, SQLite cache, and stale
-  fallback; every upstream attempt logged to Settings > Calls
-  (`/settings?tab=calls`) with 1h/12h/24h/3d/7d/30d counts.
+- **Lookup**: Pokémon via TCGdex (`@tcgdex/sdk`) with retry, SQLite
+  cache, and stale fallback; Artist Search by illustrator; Settings
+  migrate for legacy pokemontcg.io image URLs; every upstream attempt
+  logged to Settings > Logs (`/settings?tab=calls`) with
+  1h/12h/24h/3d/7d/30d counts.
 - **Routing**: every screen has a real URL; the task bar is two-level
   (Bank / Binders / Extras + subsections) and old URLs redirect.
 - **Desktop DB share + updates**: Electron first-run Create new / Use
@@ -30,10 +32,6 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
   `v*` tags publish desktop releases (see ADR 0001).
 
 ### Scaffolded (UI exists, feature not built)
-- **Extras > Artist Search**: research + artofpkm deep links only
-  (`docs/research/artist-search.md`); no result fetching yet. Page title
-  carries a Planned badge; binder/bank/lookup use an artist icon button
-  that deep-links here.
 - **Bank > Tags / Bank > Collections**: read-only previews of the tags
   and collections already on cards, with disabled rule/bulk-apply and
   **Slot labels and Optimize** panels. Card forms and filters already
@@ -58,9 +56,9 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
    then optional auto-apply on create/import/update. Open questions:
    rule precedence on conflicting collection assignments, undo,
    whether imports trigger rules. Smart tags/collections live here.
-3. **Functional Artist Search** (Extras): query pokemontcg.io via the
-   lookup proxy (`artist:"…"`), log calls through `logApiCall`, add
-   results to Bank/Wishlist or place them.
+3. **Artist Search polish** (Extras): optional add-to-bank / place-from
+   results from the TCGdex illustrator grid (core search already ships;
+   see [artist-search.md](research/artist-search.md)).
 4. **Binder sections**: named groups of sides within a binder with
    filled/total rollups (deferred from the multiple-binders milestone).
    Sections are the anchor for slot labels and Optimize.

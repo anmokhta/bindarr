@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BANK_LABELS, type BankItem } from "@bindarr/shared";
 import { BankFiltersBar, emptyFilters, filterBankItems, type BankFilters } from "./BankPicker.js";
 import BankItemForm from "./BankItemForm.js";
@@ -17,6 +17,7 @@ import {
   type BankSortOrder,
   type ImageFilter,
 } from "../bankEnrich.js";
+import { addTags, parseTagList, removeTags, setCollection } from "../bankBulk.js";
 import { parseBankImport, type BankImportFormat } from "../bankImport.js";
 
 export type CollectionMode = "bank" | "wishlist";
@@ -73,9 +74,13 @@ export default function BankPage({
 
   const [enriching, setEnriching] = useState(false);
   const enrichCancelRef = useRef(false);
+  const [enrichProgress, setEnrichProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [enrichLog, setEnrichLog] = useState<Array<{ name: string; status: "filled" | "skipped" | "error"; detail?: string }>>([]);
+  const [enrichSummary, setEnrichSummary] = useState("");
   const [imageFilter, setImageFilter] = useState<ImageFilter>("all");
   const [sortBy, setSortBy] = useState<BankSortBy>("name");
   const [sortOrder, setSortOrder] = useState<BankSortOrder>("asc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const activeGame = visibleBanks.includes(game) ? game : (visibleBanks[0] ?? "pokemon");
   const inMode = useMemo(() => items.filter((i) => (mode === "bank" ? i.have : i.want)), [items, mode]);
@@ -86,10 +91,28 @@ export default function BankPage({
   }, [inGame, filters, imageFilter, sortBy, sortOrder]);
   const isWishlist = mode === "wishlist";
   const formOpen = showForm || !!editing;
-  const missingImageCount = useMemo(
-    () => (activeGame === "misc" ? 0 : visible.filter(needsImageEnrich).length),
-    [visible, activeGame],
+  const visibleIds = useMemo(() => new Set(visible.map((i) => i.id)), [visible]);
+  const selectedVisible = useMemo(
+    () => visible.filter((i) => selectedIds.has(i.id)),
+    [visible, selectedIds],
   );
+  const missingImageCount = useMemo(() => {
+    if (activeGame === "misc") return 0;
+    const pool = selectedVisible.length ? selectedVisible : visible;
+    return pool.filter(needsImageEnrich).length;
+  }, [visible, selectedVisible, activeGame]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeGame, mode]);
+
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      if (!prev.size) return prev;
+      const next = new Set([...prev].filter((id) => visibleIds.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleIds]);
 
   const formTitle = editing
     ? `Edit ${editing.name}`
@@ -129,54 +152,141 @@ export default function BankPage({
     }
   }
 
-  async function fillMissingImages() {
+  async function identifyCards(targets: BankItem[]) {
     if (activeGame === "misc" || enriching) return;
-    const targets = visible.filter(needsImageEnrich);
-    if (!targets.length) {
-      setNotice("No cards missing images in the current view.");
+    const list = targets.filter(needsImageEnrich);
+    if (!list.length) {
+      setNotice("No cards missing images in the current selection.");
       return;
     }
     const ok = window.confirm(
-      `Look up ${targets.length} card${targets.length === 1 ? "" : "s"} on Pokémon TCG and fill missing image (and empty fields) from the first match?`,
+      `Identify ${list.length} card${list.length === 1 ? "" : "s"} on Pokémon TCG and fill missing image (and empty fields) from the first match?`,
     );
     if (!ok) return;
 
     enrichCancelRef.current = false;
     setEnriching(true);
+    setEnrichLog([]);
+    setEnrichSummary("");
+    setNotice("");
+    const log: Array<{ name: string; status: "filled" | "skipped" | "error"; detail?: string }> = [];
     let filled = 0;
     let skipped = 0;
     let errors = 0;
 
-    for (let i = 0; i < targets.length; i++) {
+    for (let i = 0; i < list.length; i++) {
       if (enrichCancelRef.current) break;
-      const item = targets[i];
-      setNotice(`Looking up ${i + 1} of ${targets.length}: ${item.name}…`);
+      const item = list[i];
+      setEnrichProgress({ current: i + 1, total: list.length, name: item.name });
       try {
         const cards = await lookupCardsWithFallbacks({
           name: item.name,
           number: item.number ?? "",
           set: item.set ?? "",
         });
-        if (!cards.length || !cards[0].imageSmall) {
+        if (!cards.length) {
           skipped += 1;
+          log.push({ name: item.name, status: "skipped", detail: "no match" });
+          setEnrichLog([...log]);
+          continue;
+        }
+        if (!cards[0].imageSmall) {
+          skipped += 1;
+          log.push({ name: item.name, status: "skipped", detail: "match had no image" });
+          setEnrichLog([...log]);
           continue;
         }
         const patch = applyFirstLookupToItem(item, cards[0]);
         await onUpdate(item.id, patch);
         filled += 1;
-      } catch {
+        log.push({ name: item.name, status: "filled" });
+        setEnrichLog([...log]);
+      } catch (e) {
         errors += 1;
+        log.push({
+          name: item.name,
+          status: "error",
+          detail: e instanceof Error ? e.message : "Lookup failed",
+        });
+        setEnrichLog([...log]);
       }
     }
 
     const stopped = enrichCancelRef.current ? " (stopped early)" : "";
-    setNotice(`Filled ${filled} · skipped ${skipped} (no match) · ${errors} error${errors === 1 ? "" : "s"}${stopped}.`);
+    setEnrichSummary(
+      `Identified ${filled} · skipped ${skipped} (no match) · ${errors} error${errors === 1 ? "" : "s"}${stopped}.`,
+    );
+    setEnrichProgress(null);
     setEnriching(false);
+  }
+
+  function dismissEnrichReport() {
+    setEnrichLog([]);
+    setEnrichSummary("");
+    setEnrichProgress(null);
   }
 
   function closeForm() {
     setShowForm(false);
     setEditing(null);
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(visible.map((i) => i.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function bulkAddTags() {
+    const raw = window.prompt("Add tags (comma-separated):");
+    if (raw == null) return;
+    const tags = parseTagList(raw);
+    if (!tags.length) return;
+    for (const item of selectedVisible) {
+      await onUpdate(item.id, addTags(item, tags));
+    }
+  }
+
+  async function bulkRemoveTags() {
+    const raw = window.prompt("Remove tags (comma-separated):");
+    if (raw == null) return;
+    const tags = parseTagList(raw);
+    if (!tags.length) return;
+    for (const item of selectedVisible) {
+      await onUpdate(item.id, removeTags(item, tags));
+    }
+  }
+
+  async function bulkSetCollection() {
+    const raw = window.prompt("Set collection (leave empty to clear):");
+    if (raw == null) return;
+    for (const item of selectedVisible) {
+      await onUpdate(item.id, setCollection(item, raw));
+    }
+  }
+
+  async function bulkDelete() {
+    const n = selectedVisible.length;
+    if (!n) return;
+    const ok = window.confirm(
+      `Remove ${n} selected card${n === 1 ? "" : "s"}? Pockets already filled with them keep their copies.`,
+    );
+    if (!ok) return;
+    for (const item of selectedVisible) {
+      await onDelete(item.id);
+    }
+    clearSelection();
   }
 
   return (
@@ -259,20 +369,30 @@ export default function BankPage({
                   className="btn btn-secondary btn-sm"
                   onClick={() => { enrichCancelRef.current = true; }}
                 >
-                  Stop filling
+                  Stop identifying
                 </button>
               ) : (
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
                   disabled={missingImageCount === 0}
-                  title={missingImageCount === 0 ? "No cards missing images in this view" : undefined}
-                  onClick={() => void fillMissingImages()}
+                  title={
+                    missingImageCount === 0
+                      ? "No cards missing images in the current selection/view"
+                      : selectedVisible.length
+                        ? "Identify selected cards missing images"
+                        : "Identify cards missing images in this view"
+                  }
+                  onClick={() => void identifyCards(selectedVisible.length ? selectedVisible : visible)}
                 >
-                  Fill missing images{missingImageCount > 0 ? ` (${missingImageCount})` : ""}
+                  {selectedVisible.length ? "Identify" : "Identify all"}
+                  {missingImageCount > 0 ? ` (${missingImageCount})` : ""}
                 </button>
               )
             )}
+            <button type="button" className="btn btn-secondary btn-sm" disabled={!visible.length} onClick={selectAllVisible}>
+              Select all
+            </button>
             <span className="bank-count">{visible.length} of {inGame.length} item{inGame.length === 1 ? "" : "s"}</span>
             <span className="export-import">
               <button
@@ -302,6 +422,59 @@ export default function BankPage({
             </span>
           </div>
           {notice && <p className="import-notice" role="status">{notice}</p>}
+
+          {selectedVisible.length > 0 && (
+            <div className="bank-bulk-bar" role="toolbar" aria-label="Bulk actions">
+              <span className="bank-count">{selectedVisible.length} selected</span>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={clearSelection}>Clear</button>
+              {activeGame !== "misc" && !enriching && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  disabled={selectedVisible.filter(needsImageEnrich).length === 0}
+                  onClick={() => void identifyCards(selectedVisible)}
+                >
+                  Identify
+                </button>
+              )}
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void bulkAddTags()}>Add tags</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void bulkRemoveTags()}>Remove tags</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void bulkSetCollection()}>Set collection</button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => void bulkDelete()}>Delete</button>
+            </div>
+          )}
+
+          {(enriching || enrichSummary || enrichLog.some((e) => e.status !== "filled")) && (
+            <div className="bank-enrich-status" role="status">
+              {enrichProgress && (
+                <p className="bank-enrich-progress">
+                  Looking up {enrichProgress.current} of {enrichProgress.total}: {enrichProgress.name}…
+                </p>
+              )}
+              {enrichSummary && !enriching && (
+                <div className="bank-enrich-summary-row">
+                  <p className="import-notice">{enrichSummary}</p>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={dismissEnrichReport}>
+                    Dismiss
+                  </button>
+                </div>
+              )}
+              {enrichLog.filter((e) => e.status !== "filled").length > 0 && (
+                <ul className="bank-enrich-log">
+                  {enrichLog
+                    .filter((e) => e.status !== "filled")
+                    .map((e, idx) => (
+                      <li key={`${e.name}-${idx}`}>
+                        <span className={`bank-enrich-log-${e.status}`}>{e.status}</span>
+                        {" · "}
+                        {e.name}
+                        {e.detail ? ` — ${e.detail}` : ""}
+                      </li>
+                    ))}
+                </ul>
+              )}
+            </div>
+          )}
 
           {importPreview && (
             <ImportPreviewModal
@@ -343,7 +516,7 @@ export default function BankPage({
             {visible.map((item) => (
               <article
                 key={item.id}
-                className={`bank-card${item.want && !item.have ? " wishlist-only" : ""}`}
+                className={`bank-card${item.want && !item.have ? " wishlist-only" : ""}${selectedIds.has(item.id) ? " selected" : ""}`}
                 draggable
                 onDragStart={(e) => {
                   e.dataTransfer.setData("application/x-bindarr-bank", item.id);
@@ -351,6 +524,14 @@ export default function BankPage({
                 }}
                 title="Drag onto a binder pocket, or use Place"
               >
+                <label className="bank-card-select" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(item.id)}
+                    onChange={() => toggleSelected(item.id)}
+                    aria-label={`Select ${item.name}`}
+                  />
+                </label>
                 <div className="bank-card-img">
                   {item.image ? <img src={item.image} alt={item.name} /> : <div className="bank-card-noimg">{item.name}</div>}
                   <div className="card-overlay">

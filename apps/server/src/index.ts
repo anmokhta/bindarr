@@ -29,7 +29,6 @@ export interface ServerOptions {
   logger?: boolean;
   /** Injectable for tests; defaults to global fetch. */
   tcgFetch?: typeof fetch;
-  tcgApiKey?: string;
   /** Force write mode (tests / :memory:). When false, still attempts lease for file DBs. */
   skipWriteLease?: boolean;
   appVersion?: string;
@@ -38,16 +37,13 @@ export interface ServerOptions {
   githubFetch?: typeof fetch;
 }
 
-export interface TcgCardResult {
-  id: string;
-  name: string;
-  number: string;
-  setName: string;
-  imageSmall: string | null;
-  artist: string | null;
-  evolvesFrom: string | null;
-  evolvesTo: string[];
-}
+export type { TcgCardResult } from "./tcgdex-client.js";
+import {
+  createTcgdexClient,
+  isPokemontcgImageUrl,
+  isTcgdexImageUrl,
+  type TcgCardResult,
+} from "./tcgdex-client.js";
 
 const SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS planner_state (
@@ -278,66 +274,34 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     }
   });
 
-  // Pokémon TCG lookup proxy. The upstream api.pokemontcg.io intermittently
-  // returns 500/502 unauthenticated, so: retry with backoff, send an API key
-  // when configured, request only needed fields, and cache every success in
-  // SQLite (card data is immutable, so cached results stay valid and can be
-  // served stale when the upstream is down).
-  const tcgFetch = opts.tcgFetch ?? fetch;
-  const tcgApiKey = opts.tcgApiKey ?? process.env.POKEMONTCG_API_KEY;
+  // Pokémon card lookup via @tcgdex/sdk. Retry with backoff and cache successes
+  // in SQLite; serve stale cache when upstream is down.
+  const tcg = createTcgdexClient(opts.tcgFetch);
 
-  /** Log one external API call. Reused by future providers (artist search). */
+  /** Log one external API call. Reused by artist search and migration. */
   const logApiCall = (entry: { provider: string; game: string; call: string; status: "success" | "error" | "cache-hit"; httpStatus?: number | null }) => {
     if (!lease.writeMode) return;
     db.prepare("INSERT INTO api_calls (id, created_at, provider, game, call, status, http_status) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .run(randomUUID(), new Date().toISOString(), entry.provider, entry.game, entry.call, entry.status, entry.httpStatus ?? null);
   };
 
-  app.get("/api/lookup", async (req, reply) => {
-    const { name, number, set } = (req.query ?? {}) as { name?: string; number?: string; set?: string };
-    const cleanName = (name ?? "").replace(/"/g, "").trim();
-    if (!cleanName) return reply.code(400).send({ error: "A card name is required to search" });
-    const cleanNumber = (number ?? "").trim();
-    const cleanSet = (set ?? "").replace(/"/g, "").trim();
-    let q = `name:"${cleanName}"`;
-    if (cleanNumber) q += ` number:${cleanNumber.replace(/[^\w-]/g, "")}`;
-    if (cleanSet) q += ` set.name:"${cleanSet}"`;
-    const cacheKey = q;
-
+  async function lookupWithCache(
+    cacheKey: string,
+    callLabel: string,
+    run: () => Promise<TcgCardResult[]>,
+  ): Promise<{ cards: TcgCardResult[]; cached: boolean } | { error: string; status: number }> {
     const cachedRow = () =>
       db.prepare("SELECT response FROM lookup_cache WHERE query = ?").get(cacheKey) as
         | { response: string }
         | undefined;
 
-    const url =
-      `https://api.pokemontcg.io/v2/cards?q=${encodeURIComponent(q)}` +
-      `&pageSize=8&select=id,name,number,set,images,artist,evolvesFrom,evolvesTo`;
     const delays = [0, 600, 1800];
     let lastStatus = 0;
     for (const delay of delays) {
       if (delay) await new Promise((r) => setTimeout(r, delay));
       try {
-        const res = await tcgFetch(url, {
-          headers: {
-            accept: "application/json",
-            ...(tcgApiKey ? { "X-Api-Key": tcgApiKey } : {}),
-          },
-          signal: AbortSignal.timeout(12_000),
-        });
-        lastStatus = res.status;
-        logApiCall({ provider: "pokemontcg", game: "pokemon", call: `cards?q=${q}`, status: res.ok ? "success" : "error", httpStatus: res.status });
-        if (!res.ok) continue;
-        const data = (await res.json()) as { data?: any[] };
-        const cards: TcgCardResult[] = (data.data ?? []).map((c) => ({
-          id: c.id,
-          name: c.name,
-          number: c.number,
-          setName: c.set?.name ?? "",
-          imageSmall: c.images?.small ?? null,
-          artist: c.artist ?? null,
-          evolvesFrom: c.evolvesFrom ?? null,
-          evolvesTo: Array.isArray(c.evolvesTo) ? c.evolvesTo : [],
-        }));
+        const cards = await run();
+        logApiCall({ provider: "tcgdex", game: "pokemon", call: callLabel, status: "success", httpStatus: 200 });
         if (lease.writeMode) {
           db.prepare(
             `INSERT INTO lookup_cache (query, response, fetched_at) VALUES (?, ?, ?)
@@ -345,20 +309,56 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
           ).run(cacheKey, JSON.stringify(cards), new Date().toISOString());
         }
         return { cards, cached: false };
-      } catch {
+      } catch (e) {
         lastStatus = 0;
-        logApiCall({ provider: "pokemontcg", game: "pokemon", call: `cards?q=${q}`, status: "error" });
+        logApiCall({ provider: "tcgdex", game: "pokemon", call: callLabel, status: "error" });
+        // SDK may throw on HTTP errors; keep retrying
+        void e;
       }
     }
 
     const stale = cachedRow();
     if (stale) {
-      logApiCall({ provider: "pokemontcg", game: "pokemon", call: `cards?q=${q}`, status: "cache-hit" });
+      logApiCall({ provider: "tcgdex", game: "pokemon", call: callLabel, status: "cache-hit" });
       return { cards: JSON.parse(stale.response) as TcgCardResult[], cached: true };
     }
-    return reply.code(502).send({
-      error: `Pokémon TCG API is unavailable right now${lastStatus ? ` (HTTP ${lastStatus})` : ""} — try again in a moment`,
+    return {
+      status: 502,
+      error: `TCGdex / Pokémon card API is unavailable right now${lastStatus ? ` (HTTP ${lastStatus})` : ""} — try again in a moment`,
+    };
+  }
+
+  app.get("/api/lookup", async (req, reply) => {
+    const { name, number, set } = (req.query ?? {}) as { name?: string; number?: string; set?: string };
+    const cleanName = (name ?? "").replace(/"/g, "").trim();
+    if (!cleanName) return reply.code(400).send({ error: "A card name is required to search" });
+    const cleanNumber = (number ?? "").trim().replace(/[^\w-]/g, "");
+    const cleanSet = (set ?? "").replace(/"/g, "").trim();
+    const callLabel = `cards?name=${cleanName}${cleanNumber ? `&localId=${cleanNumber}` : ""}${cleanSet ? `&set.name=${cleanSet}` : ""}`;
+    const cacheKey = `tcgdex:${callLabel}`;
+
+    const result = await lookupWithCache(cacheKey, callLabel, () =>
+      tcg.searchCards({ name: cleanName, number: cleanNumber, set: cleanSet, pageSize: 8 }),
+    );
+    if ("error" in result) return reply.code(result.status).send({ error: result.error });
+    return result;
+  });
+
+  app.get("/api/lookup/artist", async (req, reply) => {
+    const { name, page: pageRaw } = (req.query ?? {}) as { name?: string; page?: string };
+    const cleanName = (name ?? "").replace(/"/g, "").trim();
+    if (!cleanName) return reply.code(400).send({ error: "An artist name is required to search" });
+    const page = Math.max(1, Number.parseInt(pageRaw ?? "1", 10) || 1);
+    const pageSize = 24;
+    const callLabel = `cards?illustrator=eq:${cleanName}&page=${page}`;
+    const cacheKey = `tcgdex:${callLabel}`;
+
+    const result = await lookupWithCache(cacheKey, callLabel, async () => {
+      const { cards } = await tcg.searchByArtist({ illustrator: cleanName, page, pageSize });
+      return cards;
     });
+    if ("error" in result) return reply.code(result.status).send({ error: result.error });
+    return { ...result, page, pageSize };
   });
 
   // --- Card bank -------------------------------------------------------------
@@ -433,6 +433,147 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     return { created, updated };
   });
 
+  /** Rewrite images.pokemontcg.io URLs on bank items and planner pockets to TCGdex assets. */
+  app.post("/api/migrate/pokemontcg-images", async (_req, reply) => {
+    if (requireWrite(reply)) return;
+
+    const report = {
+      bankUpdated: 0,
+      bankSkipped: 0,
+      bankErrors: 0,
+      pocketsUpdated: 0,
+      pocketsSkipped: 0,
+    };
+
+    async function resolveNewImage(item: {
+      image: string | null;
+      apiId: string | null;
+      name: string;
+      number: string;
+      set: string;
+    }): Promise<{ image: string; apiId: string | null } | null> {
+      if (!isPokemontcgImageUrl(item.image)) return null;
+      if (item.apiId) {
+        const card = await tcg.getCardById(item.apiId);
+        if (card?.imageSmall) {
+          logApiCall({ provider: "tcgdex", game: "pokemon", call: `migrate:${item.apiId}`, status: "success", httpStatus: 200 });
+          return { image: card.imageSmall, apiId: card.id || item.apiId };
+        }
+      }
+      if (item.name.trim()) {
+        const cards = await tcg.searchCards({
+          name: item.name,
+          number: item.number,
+          set: item.set,
+          pageSize: 1,
+        });
+        const card = cards[0];
+        if (card?.imageSmall) {
+          logApiCall({ provider: "tcgdex", game: "pokemon", call: `migrate:search:${item.name}`, status: "success", httpStatus: 200 });
+          return { image: card.imageSmall, apiId: card.id || item.apiId };
+        }
+      }
+      return null;
+    }
+
+    const bankRows = db.prepare("SELECT id, data FROM bank_items").all() as { id: string; data: string }[];
+    for (const row of bankRows) {
+      let item: BankItem;
+      try {
+        item = JSON.parse(row.data) as BankItem;
+      } catch {
+        report.bankErrors += 1;
+        continue;
+      }
+      if (!isPokemontcgImageUrl(item.image)) {
+        report.bankSkipped += 1;
+        continue;
+      }
+      try {
+        const next = await resolveNewImage({
+          image: item.image,
+          apiId: item.apiId,
+          name: item.name,
+          number: item.number ?? "",
+          set: item.set ?? "",
+        });
+        if (!next) {
+          report.bankSkipped += 1;
+          continue;
+        }
+        const updated = { ...item, image: next.image, apiId: next.apiId ?? item.apiId };
+        db.prepare("UPDATE bank_items SET data = ?, updated_at = ? WHERE id = ?")
+          .run(JSON.stringify(updated), new Date().toISOString(), row.id);
+        report.bankUpdated += 1;
+      } catch {
+        report.bankErrors += 1;
+        logApiCall({ provider: "tcgdex", game: "pokemon", call: `migrate:bank:${row.id}`, status: "error" });
+      }
+    }
+
+    const stateRow = db.prepare("SELECT state FROM planner_state WHERE id = 1").get() as { state: string } | undefined;
+    if (stateRow) {
+      const state = parsePlannerState(JSON.parse(stateRow.state));
+      if (state) {
+        let dirty = false;
+        const bankById = new Map(
+          (db.prepare("SELECT id, data FROM bank_items").all() as { id: string; data: string }[])
+            .map((r) => {
+              try {
+                return [r.id, JSON.parse(r.data) as BankItem] as const;
+              } catch {
+                return null;
+              }
+            })
+            .filter(Boolean) as Array<readonly [string, BankItem]>,
+        );
+
+        for (const binder of state.binders) {
+          for (const page of binder.pages) {
+            for (let i = 0; i < page.slots.length; i++) {
+              const slot = page.slots[i];
+              if (!slot || !isPokemontcgImageUrl(slot.image)) continue;
+              try {
+                const linked = slot.bankId ? bankById.get(slot.bankId) : undefined;
+                if (linked?.image && isTcgdexImageUrl(linked.image)) {
+                  page.slots[i] = { ...slot, image: linked.image };
+                  dirty = true;
+                  report.pocketsUpdated += 1;
+                  continue;
+                }
+                const next = await resolveNewImage({
+                  image: slot.image,
+                  apiId: linked?.apiId ?? null,
+                  name: slot.name,
+                  number: linked?.number ?? "",
+                  set: linked?.set ?? "",
+                });
+                if (!next) {
+                  report.pocketsSkipped += 1;
+                  continue;
+                }
+                page.slots[i] = { ...slot, image: next.image };
+                dirty = true;
+                report.pocketsUpdated += 1;
+              } catch {
+                report.pocketsSkipped += 1;
+              }
+            }
+          }
+        }
+
+        if (dirty) {
+          db.prepare(
+            `INSERT INTO planner_state (id, state, updated_at) VALUES (1, ?, ?)
+             ON CONFLICT(id) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at`,
+          ).run(JSON.stringify(state), new Date().toISOString());
+        }
+      }
+    }
+
+    return report;
+  });
+
   // --- API call tracking -------------------------------------------------------
   const CALL_WINDOWS: Record<string, number> = {
     "1h": 3_600_000, "12h": 43_200_000, "24h": 86_400_000,
@@ -458,7 +599,7 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     const { range } = (req.query ?? {}) as { range?: string };
     const ms = CALL_WINDOWS[range ?? "24h"] ?? CALL_WINDOWS["24h"];
     const since = new Date(Date.now() - ms).toISOString();
-    const rows = db.prepare("SELECT * FROM api_calls WHERE created_at >= ? ORDER BY created_at DESC LIMIT 200")
+    const rows = db.prepare("SELECT * FROM api_calls WHERE created_at >= ? ORDER BY created_at DESC LIMIT 2000")
       .all(since) as { id: string; created_at: string; provider: string; game: string; call: string; status: string; http_status: number | null }[];
     return {
       calls: rows.map((r) => ({

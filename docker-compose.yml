@@ -12,7 +12,6 @@ services:
       DATABASE_PATH: /data/bindarr.db
       APP_VERSION: ${APP_VERSION:-0.1.0}
       GITHUB_REPO: ${GITHUB_REPO:-anmokhta/bindarr}
-      POKEMONTCG_API_KEY: ${POKEMONTCG_API_KEY:-}
     volumes:
       # Host folder (gitignored). Survives `docker compose down` and `down -v`.
       - ./data:/data

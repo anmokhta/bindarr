@@ -86,7 +86,30 @@ describe("lookupCardsWithFallbacks", () => {
     expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "Promo");
   });
 
-  it("does not retry when name has no brackets", async () => {
+  it("retries without set when strip+set is still empty (Promo / Vaporeon)", async () => {
+    lookupMock.mockResolvedValueOnce([]).mockResolvedValueOnce([]).mockResolvedValueOnce([tcg]);
+    const out = await lookupCardsWithFallbacks({
+      name: "Vaporeon [Cosmos Holo]",
+      number: "168",
+      set: "Promo",
+    });
+    expect(out).toEqual([tcg]);
+    expect(lookupMock).toHaveBeenCalledTimes(3);
+    expect(lookupMock).toHaveBeenNthCalledWith(1, "Vaporeon [Cosmos Holo]", "168", "Promo");
+    expect(lookupMock).toHaveBeenNthCalledWith(2, "Vaporeon", "168", "Promo");
+    expect(lookupMock).toHaveBeenNthCalledWith(3, "Vaporeon", "168", "");
+  });
+
+  it("retries without set when name has no brackets but set misses", async () => {
+    lookupMock.mockResolvedValueOnce([]).mockResolvedValueOnce([tcg]);
+    const out = await lookupCardsWithFallbacks({ name: "Archeops", number: "51", set: "Promo" });
+    expect(out).toEqual([tcg]);
+    expect(lookupMock).toHaveBeenCalledTimes(2);
+    expect(lookupMock).toHaveBeenNthCalledWith(1, "Archeops", "51", "Promo");
+    expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "");
+  });
+
+  it("does not retry without set when no set was given", async () => {
     lookupMock.mockResolvedValueOnce([]);
     const out = await lookupCardsWithFallbacks({ name: "Archeops", number: "51" });
     expect(out).toEqual([]);

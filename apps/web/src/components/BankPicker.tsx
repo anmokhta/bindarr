@@ -3,6 +3,7 @@ import { BANK_LABELS, type BankItem } from "@bindarr/shared";
 
 export interface BankFilters {
   query: string;
+  includeEvolutions: boolean;
   set: string[];
   artist: string[];
   evolutionLine: string[];
@@ -12,6 +13,7 @@ export interface BankFilters {
 
 export const emptyFilters: BankFilters = {
   query: "",
+  includeEvolutions: false,
   set: [],
   artist: [],
   evolutionLine: [],
@@ -19,10 +21,18 @@ export const emptyFilters: BankFilters = {
   tag: [],
 };
 
+function matchesQuery(item: BankItem, q: string, includeEvolutions: boolean): boolean {
+  if (!q) return true;
+  const base = `${item.name} ${item.set} ${item.number} ${item.artist ?? ""} ${item.collection ?? ""} ${item.tags.join(" ")}`.toLowerCase();
+  if (base.includes(q)) return true;
+  if (!includeEvolutions) return false;
+  return (item.evolutionLine ?? "").toLowerCase().includes(q);
+}
+
 export function filterBankItems(items: BankItem[], f: BankFilters): BankItem[] {
   const q = f.query.trim().toLowerCase();
   return items.filter((i) => {
-    if (q && !`${i.name} ${i.set} ${i.number} ${i.artist ?? ""} ${i.evolutionLine ?? ""} ${i.collection ?? ""} ${i.tags.join(" ")}`.toLowerCase().includes(q)) return false;
+    if (!matchesQuery(i, q, f.includeEvolutions)) return false;
     if (f.set.length && !f.set.includes(i.set)) return false;
     if (f.artist.length && !(i.artist && f.artist.includes(i.artist))) return false;
     if (f.evolutionLine.length && !(i.evolutionLine && f.evolutionLine.includes(i.evolutionLine))) return false;
@@ -140,12 +150,22 @@ export function BankFiltersBar({
   const patch = (p: Partial<BankFilters>) => onChange({ ...filters, ...p });
   return (
     <div className="bank-filters-bar">
-      <input
-        className="bank-search"
-        placeholder="Search by name, set, artist, evolution…"
-        value={filters.query}
-        onChange={(e) => patch({ query: e.target.value })}
-      />
+      <div className="bank-search-row">
+        <input
+          className="bank-search"
+          placeholder="Search by name, set, artist…"
+          value={filters.query}
+          onChange={(e) => patch({ query: e.target.value })}
+        />
+        <label className="bank-include-evo">
+          <input
+            type="checkbox"
+            checked={filters.includeEvolutions}
+            onChange={(e) => patch({ includeEvolutions: e.target.checked })}
+          />
+          Include evolutions
+        </label>
+      </div>
       <div className="bank-filter-selects">
         <MultiSelectFilter
           label="Sets"

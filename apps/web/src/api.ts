@@ -163,14 +163,8 @@ export async function saveSettings(settings: AppSettings): Promise<AppSettings> 
   return parseAppSettings(data.settings);
 }
 
-export async function lookupCards(name: string, number: string, set = ""): Promise<TcgCard[]> {
-  const params = new URLSearchParams({ name });
-  if (number.trim()) params.set("number", number.trim());
-  if (set.trim()) params.set("set", set.trim());
-  const res = await fetch(`/api/lookup?${params}`);
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error ?? `Lookup failed (HTTP ${res.status})`);
-  return ((data.cards ?? []) as Partial<TcgCard>[]).map((c) => ({
+function mapTcgCard(c: Partial<TcgCard>): TcgCard {
+  return {
     id: c.id ?? "",
     name: c.name ?? "",
     number: c.number ?? "",
@@ -179,5 +173,46 @@ export async function lookupCards(name: string, number: string, set = ""): Promi
     artist: c.artist ?? null,
     evolvesFrom: c.evolvesFrom ?? null,
     evolvesTo: c.evolvesTo ?? [],
-  }));
+  };
+}
+
+export async function lookupCards(name: string, number: string, set = ""): Promise<TcgCard[]> {
+  const params = new URLSearchParams({ name });
+  if (number.trim()) params.set("number", number.trim());
+  if (set.trim()) params.set("set", set.trim());
+  const res = await fetch(`/api/lookup?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `Lookup failed (HTTP ${res.status})`);
+  return ((data.cards ?? []) as Partial<TcgCard>[]).map(mapTcgCard);
+}
+
+export async function lookupByArtist(
+  name: string,
+  page = 1,
+): Promise<{ cards: TcgCard[]; page: number; pageSize: number; cached: boolean }> {
+  const params = new URLSearchParams({ name, page: String(page) });
+  const res = await fetch(`/api/lookup/artist?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `Artist lookup failed (HTTP ${res.status})`);
+  return {
+    cards: ((data.cards ?? []) as Partial<TcgCard>[]).map(mapTcgCard),
+    page: Number(data.page) || page,
+    pageSize: Number(data.pageSize) || 24,
+    cached: Boolean(data.cached),
+  };
+}
+
+export interface ImageMigrateReport {
+  bankUpdated: number;
+  bankSkipped: number;
+  bankErrors: number;
+  pocketsUpdated: number;
+  pocketsSkipped: number;
+}
+
+export async function migratePokemontcgImages(): Promise<ImageMigrateReport> {
+  const res = await fetch("/api/migrate/pokemontcg-images", { method: "POST" });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error ?? `Migration failed (HTTP ${res.status})`);
+  return data as ImageMigrateReport;
 }

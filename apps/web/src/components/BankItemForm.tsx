@@ -44,9 +44,14 @@ export default function BankItemForm({
     if (!name.trim()) { setLookupStatus("Type a name first."); return; }
     setLookupStatus("Searching…");
     try {
+      const hadSet = set.trim().length > 0;
       const cards = await lookupCardsWithFallbacks({ name: name.trim(), number, set });
       setLookupResults(cards);
-      setLookupStatus(cards.length ? `${cards.length} match(es) — click to fill:` : "No matches.");
+      if (cards.length) {
+        setLookupStatus(`${cards.length} match(es) — click to fill:`);
+      } else {
+        setLookupStatus(hadSet ? "No matches (tried without set)." : "No matches.");
+      }
     } catch (e) {
       setLookupStatus(e instanceof Error ? e.message : "Lookup failed");
     }

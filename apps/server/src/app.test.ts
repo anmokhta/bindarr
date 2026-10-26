@@ -58,23 +58,42 @@ describe("server API", () => {
   });
 
   it("lookup retries upstream failures, then serves the cached result", async () => {
-    let calls = 0;
+    let listAttempts = 0;
     let failAll = false;
-    const flakyFetch = (async () => {
-      calls++;
+    const flakyFetch = (async (input: string | URL | Request) => {
+      const url = String(input);
       if (failAll) return new Response(null, { status: 502 });
-      if (calls < 3) return new Response(null, { status: 500 });
-      return Response.json({
-        data: [{ id: "basep-1", name: "Pikachu", number: "1", set: { name: "Wizards Black Star Promos" }, images: { small: "https://img/1.png" } }],
-      });
+      // Detail fetch: /v2/en/cards/{id} (no query string)
+      if (/\/cards\/[^/?]+$/.test(url)) {
+        return Response.json({
+          id: "basep-1",
+          localId: "1",
+          name: "Pikachu",
+          image: "https://assets.example/p",
+          illustrator: "Ken Sugimori",
+          set: { name: "Wizards Black Star Promos" },
+          evolveFrom: null,
+        });
+      }
+      listAttempts++;
+      if (listAttempts < 3) return new Response(null, { status: 500 });
+      return Response.json([
+        { id: "basep-1", localId: "1", name: "Pikachu", image: "https://assets.example/p" },
+      ]);
     }) as typeof fetch;
     const app = await buildApp({ databasePath: ":memory:", tcgFetch: flakyFetch });
     try {
       const first = await app.inject({ method: "GET", url: "/api/lookup?name=Pikachu" });
       expect(first.statusCode).toBe(200);
-      expect(first.json().cards[0]).toMatchObject({ name: "Pikachu", setName: "Wizards Black Star Promos", imageSmall: "https://img/1.png" });
+      expect(first.json().cards[0]).toMatchObject({
+        name: "Pikachu",
+        setName: "Wizards Black Star Promos",
+        imageSmall: "https://assets.example/p/low.webp",
+        number: "1",
+        artist: "Ken Sugimori",
+      });
       expect(first.json().cached).toBe(false);
-      expect(calls).toBe(3);
+      expect(listAttempts).toBe(3);
 
       failAll = true;
       const stale = await app.inject({ method: "GET", url: "/api/lookup?name=Pikachu" });
@@ -101,9 +120,22 @@ describe("server API", () => {
   }, 20_000);
 
   it("import dedupes on apiId and name/set/number, and logs lookup calls", async () => {
-    const fakeFetch = (async () => Response.json({
-      data: [{ id: "base1-58", name: "Pikachu", number: "58", set: { name: "Base" }, images: { small: "https://img/p.png" }, artist: "Mitsuhiro Arita" }],
-    })) as typeof fetch;
+    const fakeFetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (/\/cards\/[^/?]+$/.test(url)) {
+        return Response.json({
+          id: "base1-58",
+          localId: "58",
+          name: "Pikachu",
+          image: "https://assets.example/p",
+          illustrator: "Mitsuhiro Arita",
+          set: { name: "Base" },
+        });
+      }
+      return Response.json([
+        { id: "base1-58", localId: "58", name: "Pikachu", image: "https://assets.example/p" },
+      ]);
+    }) as typeof fetch;
     const app = await buildApp({ databasePath: ":memory:", tcgFetch: fakeFetch });
     try {
       const items = [
@@ -122,9 +154,9 @@ describe("server API", () => {
       expect(stats.json().windows["1h"]).toBe(1);
       expect(stats.json().windows["30d"]).toBe(1);
       expect(stats.json().byGame.pokemon).toBe(1);
-      expect(stats.json().byProvider.pokemontcg).toBe(1);
+      expect(stats.json().byProvider.tcgdex).toBe(1);
       const calls = await app.inject({ method: "GET", url: "/api/calls?range=24h" });
-      expect(calls.json().calls[0]).toMatchObject({ status: "success", game: "pokemon", provider: "pokemontcg" });
+      expect(calls.json().calls[0]).toMatchObject({ status: "success", game: "pokemon", provider: "tcgdex" });
       expect(calls.json().calls[0].call).toContain("Pikachu");
       expect(calls.json().calls[0].day).toBeTruthy();
     } finally {
@@ -244,6 +276,111 @@ describe("server API", () => {
       expect(put.statusCode).toBe(200);
     } finally {
       await reader.close();
+    }
+  });
+
+  it("artist lookup returns illustrator cards and rejects missing name", async () => {
+    const fakeFetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (/\/cards\/[^/?]+$/.test(url)) {
+        return Response.json({
+          id: "base1-58",
+          localId: "58",
+          name: "Pikachu",
+          image: "https://assets.example/p",
+          illustrator: "Mitsuhiro Arita",
+          set: { name: "Base" },
+        });
+      }
+      if (url.includes("illustrator=")) {
+        return Response.json([
+          { id: "base1-58", localId: "58", name: "Pikachu", image: "https://assets.example/p" },
+        ]);
+      }
+      return Response.json([]);
+    }) as typeof fetch;
+    const app = await buildApp({ databasePath: ":memory:", tcgFetch: fakeFetch });
+    try {
+      const missing = await app.inject({ method: "GET", url: "/api/lookup/artist" });
+      expect(missing.statusCode).toBe(400);
+
+      const res = await app.inject({ method: "GET", url: "/api/lookup/artist?name=Mitsuhiro%20Arita" });
+      expect(res.statusCode).toBe(200);
+      expect(res.json().page).toBe(1);
+      expect(res.json().pageSize).toBe(24);
+      expect(res.json().cards[0]).toMatchObject({
+        name: "Pikachu",
+        artist: "Mitsuhiro Arita",
+        imageSmall: "https://assets.example/p/low.webp",
+        number: "58",
+      });
+    } finally {
+      await app.close();
+    }
+  });
+
+  it("migrates pokemontcg.io bank and pocket image URLs via apiId", async () => {
+    const fakeFetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes("/cards/base1-58")) {
+        return Response.json({
+          id: "base1-58",
+          localId: "58",
+          name: "Pikachu",
+          image: "https://assets.tcgdex.net/en/base1/58",
+          illustrator: "Mitsuhiro Arita",
+          set: { name: "Base" },
+        });
+      }
+      return Response.json([]);
+    }) as typeof fetch;
+    const app = await buildApp({ databasePath: ":memory:", tcgFetch: fakeFetch });
+    try {
+      const created = await app.inject({
+        method: "POST",
+        url: "/api/bank",
+        payload: {
+          game: "pokemon",
+          name: "Pikachu",
+          set: "Base",
+          number: "58",
+          apiId: "base1-58",
+          image: "https://images.pokemontcg.io/base1/58.png",
+        },
+      });
+      const bankId = created.json().item.id as string;
+
+      const state = defaultState();
+      state.binders[0].pages[0].slots[0] = {
+        name: "Pikachu",
+        tag: "none",
+        note: "",
+        image: "https://images.pokemontcg.io/base1/58.png",
+        bankId,
+      };
+      await app.inject({ method: "PUT", url: "/api/state", payload: { state } });
+
+      const migrate = await app.inject({ method: "POST", url: "/api/migrate/pokemontcg-images" });
+      expect(migrate.statusCode).toBe(200);
+      expect(migrate.json()).toMatchObject({
+        bankUpdated: 1,
+        pocketsUpdated: 1,
+        bankErrors: 0,
+      });
+
+      const bank = await app.inject({ method: "GET", url: "/api/bank?game=pokemon" });
+      expect(bank.json().items[0].image).toBe("https://assets.tcgdex.net/en/base1/58/low.webp");
+
+      const after = await app.inject({ method: "GET", url: "/api/state" });
+      expect(after.json().state.binders[0].pages[0].slots[0].image).toBe(
+        "https://assets.tcgdex.net/en/base1/58/low.webp",
+      );
+
+      const again = await app.inject({ method: "POST", url: "/api/migrate/pokemontcg-images" });
+      expect(again.json().bankUpdated).toBe(0);
+      expect(again.json().pocketsUpdated).toBe(0);
+    } finally {
+      await app.close();
     }
   });
 

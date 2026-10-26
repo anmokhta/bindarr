@@ -12,9 +12,9 @@ black & white in binders until marked obtained). Both views import/export
 JSON/CSV (including PriceCharting collection CSV exports). Bank → Tags and
 Bank → Collections preview the tags/collections
 already in use; management and auto-tag rules are planned (see
-[docs/ROADMAP.md](docs/ROADMAP.md)). Includes Pokémon TCG lookup via
-pokemontcg.io, drag-to-swap pockets, and automatic saving. External API
-calls are logged under Settings → Calls (`/settings?tab=calls`); rows are
+[docs/ROADMAP.md](docs/ROADMAP.md)). Includes Pokémon card lookup via
+[TCGdex](https://tcgdex.dev/), drag-to-swap pockets, and automatic saving. External API
+calls are logged under Settings → Logs (`/settings?tab=calls`); rows are
 kept indefinitely for now — prune entries older than 90 days if it grows.
 
 Bindarr is a self-hosted web app: a Fastify + SQLite server serves the
