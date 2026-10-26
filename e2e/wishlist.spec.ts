@@ -96,19 +96,18 @@ test("routing: deep links, standalone settings, gear returns to previous page", 
   await expect(page).toHaveURL(/\/binders\/planner$/);
 });
 
-test("artist search scaffold deep-links and prefills from a card", async ({ page }) => {
+test("artist search deep-links and prefills from a card", async ({ page }) => {
   await page.goto("/bank");
   const artistBtn = page.locator(".bank-card").getByRole("button", { name: /More by / }).first();
   await artistBtn.click();
   await expect(page).toHaveURL(/\/artist-search\?artist=/);
   await expect(page.getByRole("heading", { name: /Artist Search/ })).toBeVisible();
-  await expect(page.getByRole("heading", { name: /Artist Search/ }).locator(".planned-badge")).toHaveText(/Planned/i);
+  await expect(page.getByText(/Find Pokémon cards by illustrator via TCGdex/i)).toBeVisible();
   await expect(page.getByPlaceholder(/Artist name/)).not.toHaveValue("");
   await expect(page.getByRole("link", { name: "Open on The Art of Pokémon" })).toHaveAttribute(
     "href",
     /artofpkm\.com\/illustrators\//,
   );
-  await expect(page.getByText(/coming soon|results will appear/i).first()).toBeVisible();
 });
 
 test("add card modal opens, Esc closes, Have/Want toggles stay on one line", async ({ page }) => {
