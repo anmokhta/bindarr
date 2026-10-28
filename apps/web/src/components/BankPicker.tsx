@@ -46,11 +46,22 @@ function distinct(items: BankItem[], pick: (i: BankItem) => string | null): stri
   return [...new Set(items.map(pick).filter(Boolean) as string[])].sort();
 }
 
+function countsBy(items: BankItem[], pick: (i: BankItem) => string | null): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const item of items) {
+    const v = pick(item);
+    if (!v) continue;
+    out[v] = (out[v] ?? 0) + 1;
+  }
+  return out;
+}
+
 function MultiSelectFilter({
   label,
   allLabel,
   plural,
   options,
+  counts,
   selected,
   onChange,
 }: {
@@ -58,15 +69,22 @@ function MultiSelectFilter({
   allLabel: string;
   plural: string;
   options: string[];
+  counts?: Record<string, number>;
   selected: string[];
   onChange: (next: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const listId = useId();
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setSearch("");
+      return;
+    }
+    searchRef.current?.focus();
     function onDoc(e: MouseEvent) {
       if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     }
@@ -81,10 +99,26 @@ function MultiSelectFilter({
     };
   }, [open]);
 
+  const selectedSet = useMemo(() => new Set(selected), [selected]);
+  const q = search.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    const base = q ? options.filter((o) => o.toLowerCase().includes(q)) : options;
+    return [...base].sort((a, b) => {
+      const aSel = selectedSet.has(a) ? 0 : 1;
+      const bSel = selectedSet.has(b) ? 0 : 1;
+      if (aSel !== bSel) return aSel - bSel;
+      return a.localeCompare(b, undefined, { sensitivity: "base" });
+    });
+  }, [options, q, selectedSet]);
+
   const triggerLabel =
     selected.length === 0 ? allLabel
       : selected.length === 1 ? selected[0]
         : `${selected.length} ${plural}`;
+  const triggerTitle =
+    selected.length === 0 ? allLabel
+      : selected.length === 1 ? selected[0]
+        : selected.join(", ");
 
   function toggle(value: string) {
     onChange(
@@ -92,6 +126,12 @@ function MultiSelectFilter({
         ? selected.filter((v) => v !== value)
         : [...selected, value],
     );
+  }
+
+  function selectShown() {
+    const next = new Set(selected);
+    for (const opt of filtered) next.add(opt);
+    onChange([...next]);
   }
 
   return (
@@ -103,6 +143,7 @@ function MultiSelectFilter({
         aria-expanded={open}
         aria-controls={listId}
         aria-label={label}
+        title={triggerTitle}
         onClick={() => setOpen((o) => !o)}
       >
         <span className="multi-select-trigger-label">{triggerLabel}</span>
@@ -110,24 +151,53 @@ function MultiSelectFilter({
       </button>
       {open && (
         <div className="multi-select-panel" id={listId} role="listbox" aria-multiselectable="true" aria-label={label}>
-          {selected.length > 0 && (
-            <button type="button" className="multi-select-clear" onClick={() => onChange([])}>
-              Clear
-            </button>
-          )}
+          <div className="multi-select-toolbar">
+            <input
+              ref={searchRef}
+              className="multi-select-search"
+              type="search"
+              placeholder={`Search ${plural}…`}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              aria-label={`Search ${plural}`}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+            <div className="multi-select-toolbar-actions">
+              {filtered.length > 0 && (
+                <button type="button" className="multi-select-clear" onClick={selectShown}>
+                  Select shown
+                </button>
+              )}
+              {selected.length > 0 && (
+                <button type="button" className="multi-select-clear" onClick={() => onChange([])}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
           {options.length === 0 ? (
             <p className="multi-select-empty">No options yet</p>
+          ) : filtered.length === 0 ? (
+            <p className="multi-select-empty">No matches</p>
           ) : (
-            options.map((opt) => {
+            filtered.map((opt) => {
               const checked = selected.includes(opt);
+              const count = counts?.[opt];
+              const display = count != null ? `${opt} (${count})` : opt;
               return (
-                <label key={opt} className={`multi-select-option${checked ? " checked" : ""}`}>
+                <label
+                  key={opt}
+                  className={`multi-select-option${checked ? " checked" : ""}`}
+                  title={opt}
+                >
                   <input
                     type="checkbox"
                     checked={checked}
                     onChange={() => toggle(opt)}
+                    aria-label={opt}
                   />
-                  <span>{opt}</span>
+                  <span aria-hidden="true">{display}</span>
                 </label>
               );
             })
@@ -172,6 +242,7 @@ export function BankFiltersBar({
           allLabel="All sets"
           plural="sets"
           options={distinct(items, (i) => i.set || null)}
+          counts={countsBy(items, (i) => i.set || null)}
           selected={filters.set}
           onChange={(next) => patch({ set: next })}
         />
@@ -180,6 +251,7 @@ export function BankFiltersBar({
           allLabel="All artists"
           plural="artists"
           options={distinct(items, (i) => i.artist)}
+          counts={countsBy(items, (i) => i.artist)}
           selected={filters.artist}
           onChange={(next) => patch({ artist: next })}
         />
@@ -188,6 +260,7 @@ export function BankFiltersBar({
           allLabel="All evolution lines"
           plural="evolution lines"
           options={distinct(items, (i) => i.evolutionLine)}
+          counts={countsBy(items, (i) => i.evolutionLine)}
           selected={filters.evolutionLine}
           onChange={(next) => patch({ evolutionLine: next })}
         />
@@ -196,6 +269,7 @@ export function BankFiltersBar({
           allLabel="All collections"
           plural="collections"
           options={distinct(items, (i) => i.collection)}
+          counts={countsBy(items, (i) => i.collection)}
           selected={filters.collection}
           onChange={(next) => patch({ collection: next })}
         />
@@ -204,6 +278,12 @@ export function BankFiltersBar({
           allLabel="All tags"
           plural="tags"
           options={[...new Set(items.flatMap((i) => i.tags))].sort()}
+          counts={Object.fromEntries(
+            [...new Set(items.flatMap((i) => i.tags))].map((t) => [
+              t,
+              items.filter((i) => i.tags.includes(t)).length,
+            ]),
+          )}
           selected={filters.tag}
           onChange={(next) => patch({ tag: next })}
         />

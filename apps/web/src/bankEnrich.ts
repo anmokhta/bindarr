@@ -1,6 +1,7 @@
 import type { BankItem } from "@bindarr/shared";
 import { lookupCards, type TcgCard } from "./api.js";
 import { normalizeCardLookupName } from "./bankImport.js";
+import { evolutionLineFor } from "./evolutionLines.js";
 
 function isEmpty(value: unknown): boolean {
   if (value == null) return true;
@@ -180,10 +181,22 @@ export function applyFirstLookupToItem(item: BankItem, card: TcgCard): Record<st
     patch.artist = card.artist;
   }
   if (isEmpty(item.evolutionLine) && (card.evolvesFrom || card.name)) {
-    patch.evolutionLine = card.evolvesFrom ?? card.name;
+    patch.evolutionLine = evolutionLineFor(card.name, card.evolvesFrom);
   }
 
   return patch;
+}
+
+/** Recompute evolutionLine from name (+ optional evolvesFrom). Returns null if unchanged. */
+export function correctedEvolutionLine(
+  item: Pick<BankItem, "name" | "evolutionLine">,
+  evolvesFrom?: string | null,
+): string | null {
+  const next = evolutionLineFor(item.name, evolvesFrom);
+  const cur = (item.evolutionLine ?? "").trim();
+  if (!next) return null;
+  if (cur === next) return null;
+  return next;
 }
 
 export function needsImageEnrich(item: BankItem): boolean {
@@ -192,6 +205,28 @@ export function needsImageEnrich(item: BankItem): boolean {
 
 export type BankSortBy = "name" | "set" | "number" | "artist" | "createdAt";
 export type BankSortOrder = "asc" | "desc";
+
+/** Human-readable sort field for display under a card name (null when sorting by name). */
+export function sortFieldLabel(item: BankItem, sortBy: BankSortBy): string | null {
+  if (sortBy === "name") return null;
+  if (sortBy === "set") {
+    const v = (item.set ?? "").trim();
+    return `Set: ${v || "—"}`;
+  }
+  if (sortBy === "number") {
+    const v = (item.number ?? "").trim();
+    return `No: ${v ? `#${v}` : "—"}`;
+  }
+  if (sortBy === "artist") {
+    const v = (item.artist ?? "").trim();
+    return `Artist: ${v || "—"}`;
+  }
+  const raw = (item.createdAt ?? "").trim();
+  if (!raw) return "Added: —";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return `Added: ${raw}`;
+  return `Added: ${d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}`;
+}
 
 function compareNumbers(a: string, b: string): number {
   const an = a.trim();

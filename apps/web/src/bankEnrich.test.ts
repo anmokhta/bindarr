@@ -10,6 +10,7 @@ import { lookupCards } from "./api.js";
 import {
   applyFirstLookupToItem,
   clearFalseLookupMatch,
+  correctedEvolutionLine,
   filterByImage,
   hasFalseLookupMatch,
   isPocketTcgHit,
@@ -18,8 +19,10 @@ import {
   pickLookupCard,
   shouldSkipAutoIdentify,
   sortBankItems,
+  sortFieldLabel,
   stripBracketTerms,
 } from "./bankEnrich.js";
+import { evolutionLineFor, normalizeSpeciesName } from "./evolutionLines.js";
 
 const lookupMock = vi.mocked(lookupCards);
 
@@ -234,7 +237,7 @@ describe("applyFirstLookupToItem", () => {
     expect(patch.set).toBe("Base");
     expect(patch.number).toBe("58");
     expect(patch.artist).toBe("Mitsuhiro Arita");
-    expect(patch.evolutionLine).toBe("Pikachu");
+    expect(patch.evolutionLine).toBe("Pichu");
   });
 
   it("does not overwrite non-empty fields other than filling missing image", () => {
@@ -298,5 +301,74 @@ describe("filterByImage / sortBankItems", () => {
     expect(needsImageEnrich(item({ id: "1", name: "A", image: null }))).toBe(true);
     expect(needsImageEnrich(item({ id: "2", name: "B", image: "" }))).toBe(true);
     expect(needsImageEnrich(item({ id: "3", name: "C", image: "https://x" }))).toBe(false);
+  });
+
+  it("sortFieldLabel shows the active sort field", () => {
+    const base = item({
+      id: "1",
+      name: "Pikachu",
+      set: "151",
+      number: "173",
+      artist: "Hiroyuki Yamamoto",
+      createdAt: "2026-10-03T12:00:00.000Z",
+    });
+    expect(sortFieldLabel(base, "name")).toBeNull();
+    expect(sortFieldLabel(base, "set")).toBe("Set: 151");
+    expect(sortFieldLabel(base, "number")).toBe("No: #173");
+    expect(sortFieldLabel(base, "artist")).toBe("Artist: Hiroyuki Yamamoto");
+    expect(sortFieldLabel(base, "createdAt")).toMatch(/^Added: /);
+    expect(sortFieldLabel(item({ id: "2", name: "X", artist: null }), "artist")).toBe("Artist: —");
+  });
+});
+
+describe("evolutionLineFor / normalizeSpeciesName", () => {
+  it("normalizes variant card names to species", () => {
+    expect(normalizeSpeciesName("Charizard ex")).toBe("Charizard");
+    expect(normalizeSpeciesName("Charizard V")).toBe("Charizard");
+    expect(normalizeSpeciesName("Charizard VMAX")).toBe("Charizard");
+    expect(normalizeSpeciesName("Dark Charizard")).toBe("Charizard");
+    expect(normalizeSpeciesName("Mega Charizard X ex")).toBe("Charizard");
+    expect(normalizeSpeciesName("M Charizard-EX")).toBe("Charizard");
+    expect(normalizeSpeciesName("Lt. Surge's Pikachu")).toBe("Pikachu");
+    expect(normalizeSpeciesName("Radiant Charizard")).toBe("Charizard");
+  });
+
+  it("maps Charmander line variants to Charmander", () => {
+    for (const name of [
+      "Charmander",
+      "Charmeleon",
+      "Charizard",
+      "Charizard ex",
+      "Charizard V",
+      "Dark Charizard",
+      "Mega Charizard X ex",
+    ]) {
+      expect(evolutionLineFor(name)).toBe("Charmander");
+    }
+  });
+
+  it("maps Eevee branches to Eevee", () => {
+    for (const name of ["Eevee", "Vaporeon", "Jolteon", "Flareon", "Espeon", "Umbreon", "Leafeon", "Glaceon", "Sylveon"]) {
+      expect(evolutionLineFor(name)).toBe("Eevee");
+    }
+  });
+
+  it("maps Pikachu and Raichu to the same line root", () => {
+    expect(evolutionLineFor("Pikachu")).toBe("Pichu");
+    expect(evolutionLineFor("Raichu")).toBe("Pichu");
+    expect(evolutionLineFor("Pichu")).toBe("Pichu");
+  });
+
+  it("falls back via evolvesFrom when name is unknown", () => {
+    expect(evolutionLineFor("Mystery Promo Card", "Charmeleon")).toBe("Charmander");
+  });
+
+  it("falls back to normalized name for non-Pokémon", () => {
+    expect(evolutionLineFor("Energy Search")).toBe("Energy Search");
+  });
+
+  it("correctedEvolutionLine only returns when value changes", () => {
+    expect(correctedEvolutionLine(item({ id: "1", name: "Charizard", evolutionLine: "Charmeleon" }))).toBe("Charmander");
+    expect(correctedEvolutionLine(item({ id: "2", name: "Charizard", evolutionLine: "Charmander" }))).toBeNull();
   });
 });

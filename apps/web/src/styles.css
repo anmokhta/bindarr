@@ -349,24 +349,37 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .multi-select-trigger-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .multi-select-caret { flex-shrink: 0; font-size: 10px; color: var(--ink-soft); }
 .multi-select-panel {
-  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; right: 0;
-  max-height: 220px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+  position: absolute; z-index: 30; top: calc(100% + 4px); left: 0;
+  min-width: max(100%, 300px); max-width: min(480px, 90vw);
+  max-height: min(60vh, 420px); overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
   padding: 6px; border: 1px solid var(--pocket-border); border-radius: 6px;
   background: var(--paper-raised); box-shadow: 0 8px 24px rgba(0,0,0,0.2);
 }
+.multi-select-toolbar {
+  position: sticky; top: 0; z-index: 1; display: flex; flex-direction: column; gap: 6px;
+  padding: 2px 0 6px; margin-bottom: 2px; background: var(--paper-raised);
+  border-bottom: 1px solid var(--pocket-border);
+}
+.multi-select-search {
+  width: 100%; font-family: 'IBM Plex Sans', sans-serif; font-size: 12.5px;
+  padding: 6px 8px; border: 1px solid var(--pocket-border); border-radius: 4px;
+  background: var(--paper); color: var(--ink); box-sizing: border-box;
+}
+.multi-select-search:focus { outline: none; border-color: var(--vinyl); }
+.multi-select-toolbar-actions { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
 .multi-select-option {
-  display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 4px;
+  display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 4px;
   font-size: 12.5px; cursor: pointer; color: var(--ink); min-width: 0;
 }
 .multi-select-option span {
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0;
+  white-space: normal; overflow-wrap: anywhere; line-height: 1.35; min-width: 0; flex: 1;
 }
 .multi-select-option:hover { background: color-mix(in srgb, var(--vinyl) 10%, transparent); }
 .multi-select-option.checked { background: color-mix(in srgb, var(--vinyl) 14%, transparent); }
-.multi-select-option input { width: 14px; height: 14px; flex-shrink: 0; accent-color: var(--vinyl); }
+.multi-select-option input { width: 14px; height: 14px; flex-shrink: 0; accent-color: var(--vinyl); margin-top: 2px; }
 .multi-select-clear {
-  align-self: flex-end; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
-  padding: 3px 8px; margin-bottom: 4px; border: 1px solid var(--pocket-border); border-radius: 4px;
+  font-family: 'IBM Plex Mono', monospace; font-size: 10.5px;
+  padding: 3px 8px; border: 1px solid var(--pocket-border); border-radius: 4px;
   background: transparent; color: var(--ink-soft); cursor: pointer;
 }
 .multi-select-clear:hover { border-color: var(--vinyl); color: var(--vinyl); }
@@ -412,16 +425,30 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .flag-toggle-btn.active { background: var(--paper-raised); color: var(--ink); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vinyl) 35%, transparent); }
 .bank-form-footer { display: flex; justify-content: flex-end; gap: 8px; padding-top: 4px; border-top: 1px solid var(--pocket-border); margin-top: 4px; }
 .bank-form-footer .btn, .bank-form-footer .save-btn, .bank-form-footer .cancel-btn { flex: 0 0 auto; min-width: 100px; }
-.bank-card { position: relative; border: 1px solid var(--pocket-border); border-radius: 8px; background: var(--paper-raised); overflow: hidden; cursor: grab; }
+.bank-card { position: relative; border: 1px solid var(--pocket-border); border-radius: 8px; background: var(--paper-raised); overflow: hidden; cursor: grab; user-select: none; transition: border-color 0.12s ease, box-shadow 0.12s ease; }
+.bank-card:hover { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
 .bank-card.selected { border-color: var(--vinyl); box-shadow: 0 0 0 1px var(--vinyl); }
+.bank-card.selected:hover { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold); }
 .bank-card-select {
   position: absolute; top: 8px; left: 8px; z-index: 2;
   display: flex; align-items: center; justify-content: center;
   width: 22px; height: 22px; border-radius: 4px;
   background: color-mix(in srgb, var(--paper-raised) 88%, transparent);
   border: 1px solid var(--pocket-border); cursor: pointer;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.bank-card:hover .bank-card-select,
+.bank-card:focus-within .bank-card-select,
+.bank-card.selected .bank-card-select,
+.bank-grid.has-selection .bank-card-select { opacity: 1; }
+@media (hover: none) {
+  .bank-card-select { opacity: 1; }
 }
 .bank-card-select input { width: 14px; height: 14px; margin: 0; accent-color: var(--vinyl); cursor: pointer; }
+.card-overlay-sort {
+  color: rgba(255, 220, 140, 0.95); font-family: 'IBM Plex Mono', monospace;
+  font-size: 10.5px; line-height: 1.3; margin-top: 2px; letter-spacing: 0.02em;
+}
 .bank-card-img { position: relative; aspect-ratio: 2.5/3.5; background: var(--pocket-empty); }
 .bank-card-img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .bank-card-noimg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Fraunces', serif; padding: 10px; text-align: center; }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BankItem } from "@bindarr/shared";
-import { addTags, parseTagList, removeTags, setCollection } from "./bankBulk.js";
+import { addTags, parseTagList, rangeIds, removeTags, setCollection } from "./bankBulk.js";
 
 function item(partial: Partial<BankItem> & Pick<BankItem, "id" | "name">): BankItem {
   return {
@@ -46,5 +46,14 @@ describe("bankBulk helpers", () => {
     expect(setCollection(base, "Binder B").collection).toBe("Binder B");
     expect(setCollection(base, "  ").collection).toBeNull();
     expect(setCollection(base, null).collection).toBeNull();
+  });
+
+  it("rangeIds selects inclusive slice in visible order", () => {
+    const ids = ["a", "b", "c", "d", "e"];
+    expect(rangeIds(ids, "b", "d")).toEqual(["b", "c", "d"]);
+    expect(rangeIds(ids, "d", "b")).toEqual(["b", "c", "d"]);
+    expect(rangeIds(ids, "a", "a")).toEqual(["a"]);
+    expect(rangeIds(ids, "x", "b")).toEqual([]);
+    expect(rangeIds(ids, "a", "z")).toEqual([]);
   });
 });

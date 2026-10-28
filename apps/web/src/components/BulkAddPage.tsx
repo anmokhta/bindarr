@@ -3,6 +3,7 @@ import { GAMES, type BankItem, type GameId } from "@bindarr/shared";
 import { importBankItems, type TcgCard } from "../api.js";
 import { lookupCardsWithFallbacks, pickLookupCard } from "../bankEnrich.js";
 import { parseBulkAddLines, type BulkAddLine } from "../bankImport.js";
+import { evolutionLineFor } from "../evolutionLines.js";
 
 type Phase = "paste" | "review" | "done";
 type Destination = "have" | "want" | "both";
@@ -31,7 +32,7 @@ function toImportPayload(
       apiId: c.id,
       image: c.imageSmall,
       artist: c.artist,
-      evolutionLine: c.evolvesFrom ?? c.name,
+      evolutionLine: evolutionLineFor(c.name, c.evolvesFrom),
       have,
       want,
       language,

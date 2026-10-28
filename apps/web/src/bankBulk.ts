@@ -43,3 +43,16 @@ export function setCollection(item: BankItem, collection: string | null): BankIt
   const next = collection?.trim() || null;
   return { ...item, collection: next };
 }
+
+/**
+ * Inclusive range of ids between `a` and `b` in `orderedIds` (visible order).
+ * Returns [] if either id is missing.
+ */
+export function rangeIds(orderedIds: string[], a: string, b: string): string[] {
+  const i = orderedIds.indexOf(a);
+  const j = orderedIds.indexOf(b);
+  if (i < 0 || j < 0) return [];
+  const lo = Math.min(i, j);
+  const hi = Math.max(i, j);
+  return orderedIds.slice(lo, hi + 1);
+}

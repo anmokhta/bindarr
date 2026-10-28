@@ -9,6 +9,7 @@ import {
 } from "@bindarr/shared";
 import { type TcgCard } from "../api.js";
 import { lookupCardsWithFallbacks } from "../bankEnrich.js";
+import { evolutionLineFor } from "../evolutionLines.js";
 import BankPicker from "./BankPicker.js";
 import ArtistLinkButton from "./ArtistLinkButton.js";
 
@@ -111,7 +112,7 @@ export default function PocketEditor({
     setName(c.name);
     setNote(`${c.setName ? c.setName + " " : ""}#${c.number}`);
     setImage(c.imageSmall);
-    setEvolutionLine(c.evolvesFrom ?? c.name);
+    setEvolutionLine(evolutionLineFor(c.name, c.evolvesFrom));
     setQNum(c.number);
   }
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { GAMES, type BankItem } from "@bindarr/shared";
 import { type TcgCard } from "../api.js";
 import { lookupCardsWithFallbacks } from "../bankEnrich.js";
+import { evolutionLineFor } from "../evolutionLines.js";
 
 export default function BankItemForm({
   game,
@@ -79,7 +80,7 @@ export default function BankItemForm({
     setSet(c.setName);
     setNumber(c.number);
     setArtist(c.artist ?? "");
-    setEvolutionLine(c.evolvesFrom ?? c.name);
+    setEvolutionLine(evolutionLineFor(c.name, c.evolvesFrom));
     setImage(c.imageSmall ?? "");
   }
 

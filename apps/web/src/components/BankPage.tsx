@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from "react";
 import { BANK_LABELS, type BankItem } from "@bindarr/shared";
 import { BankFiltersBar, emptyFilters, filterBankItems, type BankFilters } from "./BankPicker.js";
 import BankItemForm from "./BankItemForm.js";
@@ -10,6 +10,7 @@ import { importBankItems } from "../api.js";
 import {
   applyFirstLookupToItem,
   clearFalseLookupMatch,
+  correctedEvolutionLine,
   filterByImage,
   hasFalseLookupMatch,
   lookupCardsWithFallbacks,
@@ -17,11 +18,12 @@ import {
   pickLookupCard,
   shouldSkipAutoIdentify,
   sortBankItems,
+  sortFieldLabel,
   type BankSortBy,
   type BankSortOrder,
   type ImageFilter,
 } from "../bankEnrich.js";
-import { addTags, parseTagList, removeTags, setCollection } from "../bankBulk.js";
+import { addTags, parseTagList, rangeIds, removeTags, setCollection } from "../bankBulk.js";
 import { parseBankImport, type BankImportFormat } from "../bankImport.js";
 
 export type CollectionMode = "bank" | "wishlist";
@@ -85,6 +87,7 @@ export default function BankPage({
   const [sortBy, setSortBy] = useState<BankSortBy>("name");
   const [sortOrder, setSortOrder] = useState<BankSortOrder>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  const lastClickedIdRef = useRef<string | null>(null);
 
   const activeGame = visibleBanks.includes(game) ? game : (visibleBanks[0] ?? "pokemon");
   const inMode = useMemo(() => items.filter((i) => (mode === "bank" ? i.have : i.want)), [items, mode]);
@@ -108,6 +111,7 @@ export default function BankPage({
 
   useEffect(() => {
     setSelectedIds(new Set());
+    lastClickedIdRef.current = null;
   }, [activeGame, mode]);
 
   useEffect(() => {
@@ -270,6 +274,34 @@ export default function BankPage({
       else next.add(id);
       return next;
     });
+    lastClickedIdRef.current = id;
+  }
+
+  function selectRange(targetId: string) {
+    const anchor = lastClickedIdRef.current;
+    if (!anchor) {
+      toggleSelected(targetId);
+      return;
+    }
+    const ordered = visible.map((i) => i.id);
+    const range = rangeIds(ordered, anchor, targetId);
+    if (!range.length) {
+      toggleSelected(targetId);
+      return;
+    }
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      for (const id of range) next.add(id);
+      return next;
+    });
+    lastClickedIdRef.current = targetId;
+  }
+
+  function onCardSelectClick(e: MouseEvent, id: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.shiftKey) selectRange(id);
+    else toggleSelected(id);
   }
 
   function selectAllVisible() {
@@ -278,6 +310,7 @@ export default function BankPage({
 
   function clearSelection() {
     setSelectedIds(new Set());
+    lastClickedIdRef.current = null;
   }
 
   async function bulkAddTags() {
@@ -319,6 +352,30 @@ export default function BankPage({
       await onDelete(item.id);
     }
     clearSelection();
+  }
+
+  async function fixEvolutionLines() {
+    if (activeGame === "misc") return;
+    const pool = selectedVisible.length ? selectedVisible : visible;
+    const updates: Array<{ item: BankItem; next: string }> = [];
+    for (const item of pool) {
+      const next = correctedEvolutionLine(item);
+      if (next) updates.push({ item, next });
+    }
+    if (!updates.length) {
+      setNotice("Evolution lines already look correct for the current selection.");
+      return;
+    }
+    const ok = window.confirm(
+      `Update evolution line on ${updates.length} card${updates.length === 1 ? "" : "s"}` +
+        (selectedVisible.length ? " (selected)" : " (current view)") +
+        ` so each stage shares the base species (e.g. Charmander)?`,
+    );
+    if (!ok) return;
+    for (const { item, next } of updates) {
+      await onUpdate(item.id, { ...item, evolutionLine: next });
+    }
+    setNotice(`Updated evolution line on ${updates.length} card${updates.length === 1 ? "" : "s"}.`);
   }
 
   return (
@@ -426,6 +483,21 @@ export default function BankPage({
             <button type="button" className="btn btn-secondary btn-sm" disabled={!visible.length} onClick={selectAllVisible}>
               Select all
             </button>
+            {activeGame !== "misc" && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                disabled={!visible.length}
+                title={
+                  selectedVisible.length
+                    ? "Recompute evolution lines for selected cards"
+                    : "Recompute evolution lines for cards in this view"
+                }
+                onClick={() => void fixEvolutionLines()}
+              >
+                Fix evolution lines
+              </button>
+            )}
             <span className="bank-count">{visible.length} of {inGame.length} item{inGame.length === 1 ? "" : "s"}</span>
             <span className="export-import">
               <button
@@ -545,8 +617,10 @@ export default function BankPage({
             </p>
           )}
 
-          <div className="bank-grid">
-            {visible.map((item) => (
+          <div className={`bank-grid${selectedIds.size > 0 ? " has-selection" : ""}`}>
+            {visible.map((item) => {
+              const sortMeta = sortFieldLabel(item, sortBy);
+              return (
               <article
                 key={item.id}
                 className={`bank-card${item.want && !item.have ? " wishlist-only" : ""}${selectedIds.has(item.id) ? " selected" : ""}`}
@@ -557,11 +631,14 @@ export default function BankPage({
                 }}
                 title="Drag onto a binder pocket, or use Place"
               >
-                <label className="bank-card-select" onClick={(e) => e.stopPropagation()}>
+                <label
+                  className="bank-card-select"
+                  onClick={(e) => onCardSelectClick(e, item.id)}
+                >
                   <input
                     type="checkbox"
                     checked={selectedIds.has(item.id)}
-                    onChange={() => toggleSelected(item.id)}
+                    onChange={() => { /* selection handled in label onClick for shift-range */ }}
                     aria-label={`Select ${item.name}`}
                   />
                 </label>
@@ -569,6 +646,7 @@ export default function BankPage({
                   {item.image ? <img src={item.image} alt={item.name} /> : <div className="bank-card-noimg">{item.name}</div>}
                   <div className="card-overlay">
                     <div className="card-overlay-name">{item.name}</div>
+                    {sortMeta && <div className="card-overlay-sort">{sortMeta}</div>}
                     <div className="card-overlay-meta">
                       {[item.set, item.number ? `#${item.number}` : ""].filter(Boolean).join(", ")}
                       {item.game === "misc" && item.appliesToGame ? `For ${item.appliesToGame}` : ""}
@@ -618,7 +696,8 @@ export default function BankPage({
                   </div>
                 </div>
               </article>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
