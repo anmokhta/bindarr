@@ -44,6 +44,28 @@ docker compose down      # stop (./data kept)
 PORT=9000 docker compose up -d   # different host port
 ```
 
+### Prebuilt image (GitHub Packages)
+
+Pushing a `v*` tag builds and publishes
+[`ghcr.io/anmokhta/bindarr`](https://github.com/anmokhta/bindarr/pkgs/container/bindarr)
+as both `:<version>` and `:latest` (same trigger as Desktop releases).
+
+```sh
+docker pull ghcr.io/anmokhta/bindarr:latest
+# or a specific release:
+docker pull ghcr.io/anmokhta/bindarr:1.0.1
+
+docker run -d --name bindarr -p 8080:8080 \
+  -v "$(pwd)/data:/data" \
+  ghcr.io/anmokhta/bindarr:latest
+```
+
+If the package is private, authenticate once:
+
+```sh
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+```
+
 ### Backup / restore
 
 ```sh
@@ -119,10 +141,10 @@ GitHub Release (Docker and desktop). Packaged desktop builds also offer
 **Help → Check for Updates…** (downloads via `electron-updater`).
 
 Every push/PR builds unsigned macOS / Windows / Linux **artifacts**. Pushing
-a `v*` tag publishes a GitHub Release with installers for the updater. Builds
-are **not code-signed/notarized**, so macOS/Windows will warn on first launch.
-Why Electron over Tauri:
-[docs/adr/0001-desktop-shell.md](docs/adr/0001-desktop-shell.md).
+a `v*` tag publishes a GitHub Release with installers for the updater **and**
+pushes `ghcr.io/anmokhta/bindarr:<version>` + `:latest`. Builds are **not
+code-signed/notarized**, so macOS/Windows will warn on first launch. Why
+Electron over Tauri: [docs/adr/0001-desktop-shell.md](docs/adr/0001-desktop-shell.md).
 
 ## Coming from the old single-file planner?
 
