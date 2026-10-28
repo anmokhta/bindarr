@@ -154,9 +154,17 @@ export interface BulkAddLine {
   error?: string;
 }
 
+/** True when a trailing token looks like a collector number (58, SWSH050, 90/102). */
+function looksLikeCardNumber(token: string): boolean {
+  const t = token.replace(/^#/, "").trim();
+  if (!t) return false;
+  // Digits first (optionally with letters/slash after), or promo-style PREFIX+digits.
+  return /^(?:\d[\w./-]*|[A-Za-z]{1,8}\d[\w-]*)$/.test(t);
+}
+
 /**
  * Parse pasted bulk-add lines into name + number.
- * Accepts: `Pikachu #58`, `Pikachu, 58`, `Pikachu\t58`, or name-only.
+ * Accepts: `Pikachu #58`, `Pikachu, 58`, `Pikachu\t58`, `Ampharos 90`, or name-only.
  */
 export function parseBulkAddLines(text: string): BulkAddLine[] {
   const out: BulkAddLine[] = [];
@@ -170,12 +178,20 @@ export function parseBulkAddLines(text: string): BulkAddLine[] {
       name = normalizeCardLookupName(hash[1].trim());
       number = hash[2].trim();
     } else {
-      const parts = raw.split(/[,\t]/).map((p) => p.trim()).filter(Boolean);
-      if (parts.length >= 2) {
-        name = normalizeCardLookupName(parts.slice(0, -1).join(" "));
-        number = parts[parts.length - 1]!.replace(/^#/, "");
+      const delimited = raw.split(/[,\t]/).map((p) => p.trim()).filter(Boolean);
+      if (delimited.length >= 2) {
+        name = normalizeCardLookupName(delimited.slice(0, -1).join(" "));
+        number = delimited[delimited.length - 1]!.replace(/^#/, "");
       } else {
-        name = normalizeCardLookupName(raw);
+        // Space-separated: "Ampharos 90" / "Charizard V SWSH050"
+        const tokens = raw.split(/\s+/).filter(Boolean);
+        const last = tokens[tokens.length - 1] ?? "";
+        if (tokens.length >= 2 && looksLikeCardNumber(last)) {
+          name = normalizeCardLookupName(tokens.slice(0, -1).join(" "));
+          number = last.replace(/^#/, "");
+        } else {
+          name = normalizeCardLookupName(raw);
+        }
       }
     }
     if (!name) out.push({ raw, name: "", number: "", ok: false, error: "Missing name" });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bankItemToSlot, defaultSettings, defaultState, makeBinder, parseAppSettings, parseBankItem, parsePlannerState, resizeBinderSheets, sheetCountOf, spreadCount, spreadIndexForSide, spreadSides, totalSlotsOf } from "./index.js";
+import { bankItemToSlot, defaultSettings, defaultState, makeBinder, parseAppSettings, parseBankItem, parsePlannerState, resizeBinderSheets, resolveSlotView, sheetCountOf, spreadCount, spreadIndexForSide, spreadSides, totalSlotsOf } from "./index.js";
 
 describe("defaultState", () => {
   it("creates the two starter binders with correct slot counts", () => {
@@ -87,7 +87,48 @@ describe("bank items & settings", () => {
     expect(item.tags).toEqual([]);
     expect(item.artist).toBeNull();
     const slot = bankItemToSlot(item);
-    expect(slot).toMatchObject({ name: "Pikachu", note: "Base #58", bankId: "1" });
+    expect(slot).toMatchObject({ name: "Pikachu", note: "Base #58", bankId: "1", tag: "none" });
+    expect(bankItemToSlot(item, "showcase").tag).toBe("showcase");
+  });
+  it("resolveSlotView prefers live bank fields and keeps pocket tag", () => {
+    const item = parseBankItem({
+      id: "1",
+      game: "pokemon",
+      name: "Rayquaza",
+      set: "EX",
+      number: "22",
+      image: "https://example.com/ray.png",
+      artist: "Mitsuhiro Arita",
+      have: true,
+      want: false,
+    })!;
+    const slot = bankItemToSlot(item, "showcase");
+    slot.name = "Stale name";
+    slot.note = "Stale note";
+    const renamed = { ...item, name: "Rayquaza V", note: "Custom note" };
+    const view = resolveSlotView(slot, [renamed]);
+    expect(view).toMatchObject({
+      name: "Rayquaza V",
+      note: "Custom note",
+      image: "https://example.com/ray.png",
+      tag: "showcase",
+      linked: true,
+      orphan: false,
+      wishlistOnly: false,
+      artist: "Mitsuhiro Arita",
+    });
+  });
+  it("resolveSlotView marks orphans and falls back for legacy unlinked slots", () => {
+    const orphan = resolveSlotView(
+      { name: "Gone", tag: "none", note: "", image: null, bankId: "missing" },
+      [],
+    );
+    expect(orphan).toMatchObject({ orphan: true, linked: false, name: "Missing bank card" });
+    const legacy = resolveSlotView(
+      { name: "Freeform", tag: "none", note: "old", image: null, bankId: null },
+      [],
+    );
+    expect(legacy).toMatchObject({ name: "Freeform", note: "old", linked: false, orphan: false });
   });
   it("defaults old items to have=true want=false and allows both", () => {
     const legacy = parseBankItem({ id: "0", game: "pokemon", name: "Old Card" })!;

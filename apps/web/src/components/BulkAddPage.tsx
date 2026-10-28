@@ -264,7 +264,9 @@ export default function BulkAddPage({
               aria-label="Card list"
             />
           </label>
-          <p className="page-sub">Formats: <code>Name #58</code>, <code>Name, 58</code>, or <code>Name</code> alone.</p>
+          <p className="page-sub">
+            Formats: <code>Name #58</code>, <code>Name 58</code>, <code>Name, 58</code>, or <code>Name</code> alone.
+          </p>
           <div className="bank-actions-row">
             <button type="button" className="btn btn-primary primary-btn" onClick={startReview} disabled={!text.trim()}>
               Start review

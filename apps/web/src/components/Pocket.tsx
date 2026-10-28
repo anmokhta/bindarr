@@ -1,12 +1,11 @@
 import { useState } from "react";
-import { TAGS, type CardSlot } from "@bindarr/shared";
+import { TAGS, resolveSlotView, type BankItem, type CardSlot } from "@bindarr/shared";
 import ArtistLinkButton from "./ArtistLinkButton.js";
 
 export default function Pocket({
   card,
+  bankItems,
   isEditing,
-  wishlistOnly = false,
-  artist = null,
   onArtist,
   onEdit,
   onClear,
@@ -16,9 +15,8 @@ export default function Pocket({
   dragKey,
 }: {
   card: CardSlot | null;
+  bankItems: BankItem[];
   isEditing: boolean;
-  wishlistOnly?: boolean;
-  artist?: string | null;
   onArtist?: (name: string) => void;
   onEdit: () => void;
   onClear: () => void;
@@ -28,18 +26,19 @@ export default function Pocket({
   dragKey?: string;
 }) {
   const [dragOver, setDragOver] = useState(false);
-  const tagInfo = card ? TAGS[card.tag] : TAGS.none;
+  const view = resolveSlotView(card, bankItems);
+  const tagInfo = view ? TAGS[view.tag] : TAGS.none;
 
-  // Lookup fills note as "Set Name #number" — display it as "Set Name, #number".
+  // Note often "Set Name #number" — display as "Set Name, #number".
   const metaLine = (() => {
-    if (!card?.note) return "";
-    const m = card.note.match(/^(.*?)\s*#(\S+)$/);
-    return m ? `${m[1]}, #${m[2]}` : card.note;
+    if (!view?.note) return "";
+    const m = view.note.match(/^(.*?)\s*#(\S+)$/);
+    return m ? `${m[1]}, #${m[2]}` : view.note;
   })();
 
   return (
     <div
-      className={`pocket${card ? " filled" : ""}${card?.image ? " has-image" : ""}${wishlistOnly ? " wishlist-only" : ""}${dragOver ? " dragover" : ""}${isEditing ? " editing" : ""}`}
+      className={`pocket${view ? " filled" : ""}${view?.image ? " has-image" : ""}${view?.wishlistOnly ? " wishlist-only" : ""}${view?.orphan ? " orphan" : ""}${dragOver ? " dragover" : ""}${isEditing ? " editing" : ""}`}
       draggable={!!card}
       onClick={onEdit}
       onDragStart={(e) => e.dataTransfer.setData("text/plain", dragKey ?? String(index))}
@@ -54,25 +53,26 @@ export default function Pocket({
         if (from) onSwap(from);
       }}
     >
-      {card ? (
+      {view ? (
         <>
           {tagInfo.color && <div className="tag-bar" style={{ background: tagInfo.color }} />}
-          {card.image ? (
+          {view.image ? (
             <>
-              <img className="card-full" src={card.image} alt={card.name} />
+              <img className="card-full" src={view.image} alt={view.name} />
               <div className="card-overlay">
-                <div className="card-overlay-name">{card.name}</div>
+                <div className="card-overlay-name">{view.name}</div>
                 <div className="card-overlay-meta-row">
                   {metaLine && <div className="card-overlay-meta">{metaLine}</div>}
-                  {artist && onArtist && <ArtistLinkButton artist={artist} onClick={onArtist} />}
+                  {view.artist && onArtist && <ArtistLinkButton artist={view.artist} onClick={onArtist} />}
                 </div>
-                {wishlistOnly && <div className="card-overlay-meta wishlist-badge">Wishlist</div>}
+                {view.wishlistOnly && <div className="card-overlay-meta wishlist-badge">Wishlist</div>}
+                {view.orphan && <div className="card-overlay-meta wishlist-badge">Missing bank card</div>}
               </div>
             </>
           ) : (
             <>
-              <div className="card-name">{card.name}</div>
-              {card.note && <div className="card-note">{card.note}</div>}
+              <div className="card-name">{view.name}</div>
+              {view.note && <div className="card-note">{view.note}</div>}
               <div className="card-tag">{tagInfo.label !== "No tag" ? tagInfo.label : ""}</div>
             </>
           )}

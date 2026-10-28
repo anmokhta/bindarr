@@ -1,11 +1,44 @@
 import { useState } from "react";
-import { TAGS, bankItemToSlot, type BankItem, type CardSlot, type CardTag } from "@bindarr/shared";
+import {
+  TAGS,
+  bankItemPocketNote,
+  bankItemToSlot,
+  type BankItem,
+  type CardSlot,
+  type CardTag,
+} from "@bindarr/shared";
 import { type TcgCard } from "../api.js";
 import { lookupCardsWithFallbacks } from "../bankEnrich.js";
 import BankPicker from "./BankPicker.js";
 import ArtistLinkButton from "./ArtistLinkButton.js";
 
 export type BankPayload = Record<string, unknown>;
+
+function seedFromCard(card: CardSlot | null, bankItems: BankItem[]) {
+  const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined;
+  if (linked) {
+    return {
+      linked,
+      name: linked.name,
+      note: bankItemPocketNote(linked),
+      image: linked.image,
+      tag: (card?.tag ?? "none") as CardTag,
+      evolutionLine: linked.evolutionLine ?? "",
+      collection: linked.collection ?? "",
+      tagsText: linked.tags.join(", "),
+    };
+  }
+  return {
+    linked: undefined as BankItem | undefined,
+    name: card?.name ?? "",
+    note: card?.note ?? "",
+    image: (card?.image ?? null) as string | null,
+    tag: (card?.tag ?? "none") as CardTag,
+    evolutionLine: "",
+    collection: "",
+    tagsText: "",
+  };
+}
 
 export default function PocketEditor({
   card,
@@ -26,31 +59,31 @@ export default function PocketEditor({
   onUpdateBankItem?: (id: string, payload: Record<string, unknown>) => Promise<void>;
   onArtist?: (name: string) => void;
 }) {
-  const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined;
-  const isLinked = !!linked;
-  const isWishlistLinked = !!linked && linked.want && !linked.have;
-  const isHaveLinked = !!linked && linked.have;
+  const initial = seedFromCard(card, bankItems);
+  const isLinked = !!initial.linked;
   const isFilled = !!card;
   const detailsTabLabel = isFilled ? "Details" : "New";
 
-  const [tab, setTab] = useState<"bank" | "new">("new");
-  const [name, setName] = useState(card?.name ?? "");
-  const [tag, setTag] = useState<CardTag>(card?.tag ?? "none");
-  const [note, setNote] = useState(card?.note ?? "");
-  const [image, setImage] = useState<string | null>(card?.image ?? null);
-  const [qName, setQName] = useState(card?.name ?? "");
+  const [tab, setTab] = useState<"bank" | "new">(isLinked ? "new" : "bank");
+  const [name, setName] = useState(initial.name);
+  const [tag, setTag] = useState<CardTag>(initial.tag);
+  const [note, setNote] = useState(initial.note);
+  const [image, setImage] = useState<string | null>(initial.image);
+  const [qName, setQName] = useState(initial.name);
   const [searchTouched, setSearchTouched] = useState(false);
-  const [qNum, setQNum] = useState("");
+  const [qNum, setQNum] = useState(initial.linked?.number ?? "");
   const [status, setStatus] = useState("");
   const [results, setResults] = useState<TcgCard[]>([]);
   const [picked, setPicked] = useState<TcgCard | null>(null);
-
-  // Bank metadata (used when saving this card to the bank) — only for unlinked pockets
-  const [saveToBank, setSaveToBank] = useState(false);
-  const [evolutionLine, setEvolutionLine] = useState("");
-  const [collection, setCollection] = useState("");
-  const [tagsText, setTagsText] = useState("");
+  const [evolutionLine, setEvolutionLine] = useState(initial.evolutionLine);
+  const [collection, setCollection] = useState(initial.collection);
+  const [tagsText, setTagsText] = useState(initial.tagsText);
   const [saving, setSaving] = useState(false);
+
+  const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined;
+  const isOrphan = !!(card?.bankId && !linked);
+  const isWishlistLinked = !!linked && linked.want && !linked.have;
+  const isHaveLinked = !!linked && linked.have;
 
   async function lookup() {
     const term = qName.trim() || name.trim();
@@ -62,7 +95,6 @@ export default function PocketEditor({
     setStatus("Searching…");
     setResults([]);
     try {
-      // Pocket note often holds "Set #number"; pass empty set — number box is the reliable field.
       const cards = await lookupCardsWithFallbacks({ name: term, number: qNum, set: "" });
       if (!cards.length) setStatus(`No matches for "${term}".`);
       else {
@@ -80,37 +112,64 @@ export default function PocketEditor({
     setNote(`${c.setName ? c.setName + " " : ""}#${c.number}`);
     setImage(c.imageSmall);
     setEvolutionLine(c.evolvesFrom ?? c.name);
-    // Don't auto-check when already linked — that would create a duplicate bank entry
-    if (!isLinked) setSaveToBank(true);
+    setQNum(c.number);
+  }
+
+  function parseSetNumber(noteText: string): { set: string; number: string } {
+    const m = noteText.trim().match(/^(.*?)\s*#(\S+)\s*$/);
+    if (m) return { set: m[1].trim(), number: m[2].trim() };
+    return { set: "", number: qNum.trim() };
   }
 
   async function handleSave() {
     if (!name.trim() || saving) return;
-    let bankId: string | null = card?.bankId ?? null;
-    if (saveToBank && !isLinked) {
-      setSaving(true);
-      try {
+    setSaving(true);
+    setStatus("");
+    try {
+      const fromNote = parseSetNumber(note);
+      const setName = picked?.setName || fromNote.set || linked?.set || "";
+      const number = picked?.number || fromNote.number || linked?.number || "";
+      const tags = tagsText.split(",").map((t) => t.trim()).filter(Boolean);
+
+      if (linked && onUpdateBankItem) {
+        const payload = {
+          ...linked,
+          apiId: picked?.id ?? linked.apiId,
+          name: name.trim(),
+          set: setName,
+          number,
+          artist: picked?.artist ?? linked.artist,
+          evolutionLine: evolutionLine.trim() || null,
+          collection: collection.trim() || null,
+          tags,
+          image,
+          note: note.trim(),
+        };
+        await onUpdateBankItem(linked.id, payload);
+        onSave(bankItemToSlot({ ...linked, ...payload, id: linked.id }, tag));
+      } else {
         const item = await onCreateBankItem({
           game: "pokemon",
           apiId: picked?.id ?? null,
           name: name.trim(),
-          set: picked?.setName ?? "",
-          number: picked?.number ?? "",
+          set: setName,
+          number,
           artist: picked?.artist ?? null,
           evolutionLine: evolutionLine.trim() || null,
           collection: collection.trim() || null,
-          tags: tagsText.split(",").map((t) => t.trim()).filter(Boolean),
+          tags,
           image,
           note: note.trim(),
+          have: true,
+          want: false,
         });
-        bankId = item.id;
-      } catch {
-        setStatus("Could not save to the bank — the pocket will still be saved.");
-      } finally {
-        setSaving(false);
+        onSave(bankItemToSlot(item, tag));
       }
+    } catch (e) {
+      setStatus(e instanceof Error ? e.message : "Could not save to the bank.");
+    } finally {
+      setSaving(false);
     }
-    onSave({ name: name.trim(), tag, note: note.trim(), image, bankId });
   }
 
   async function handleMarkObtained() {
@@ -138,20 +197,31 @@ export default function PocketEditor({
         <BankPicker
           items={bankItems}
           banks={visibleBanks}
-          onFill={(item) => onSave(bankItemToSlot(item))}
+          onFill={(item) => onSave(bankItemToSlot(item, tag))}
         />
       ) : (
         <div className="edit-form" onClick={(e) => e.stopPropagation()}>
           {isHaveLinked && (
             <p className="editor-link-note" role="status">
               <span className="editor-link-chip">In bank</span>
-              Linked to bank — Save updates this pocket only.
+              This pocket shows the bank card. Save updates the bank; tag is for this pocket only.
             </p>
           )}
           {isWishlistLinked && (
             <p className="editor-link-note wishlist" role="status">
               <span className="editor-link-chip wishlist">On wishlist</span>
-              Already on your wishlist — Save updates this pocket only (does not add another bank entry).
+              This pocket shows the wishlist card. Save updates the bank; tag is for this pocket only.
+            </p>
+          )}
+          {isOrphan && (
+            <p className="editor-link-note" role="status">
+              <span className="editor-link-chip">Missing</span>
+              This pocket’s bank card was removed. Pick one from Bank, or save to create a new bank card.
+            </p>
+          )}
+          {!isLinked && !isOrphan && (
+            <p className="editor-link-note" role="status">
+              Saving creates a bank card and links this pocket to it.
             </p>
           )}
 
@@ -185,7 +255,7 @@ export default function PocketEditor({
                 onChange={(e) => setQNum(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") void lookup(); }}
               />
-              <button type="button" onClick={lookup}>Look up</button>
+              <button type="button" onClick={() => void lookup()}>Look up</button>
             </div>
             {status && <div className="ptcg-status">{status}</div>}
             <div className="ptcg-results">
@@ -203,22 +273,11 @@ export default function PocketEditor({
             </div>
           </div>
 
-          {!isLinked && (
-            <>
-              <label className="save-to-bank">
-                <input type="checkbox" checked={saveToBank} onChange={(e) => setSaveToBank(e.target.checked)} />
-                Also add to bank
-              </label>
-              <p className="save-to-bank-hint">Creates a new bank or wishlist entry when you save.</p>
-              {saveToBank && (
-                <div className="bank-meta-fields">
-                  <input placeholder="Evolution line (e.g. Charmander)" value={evolutionLine} onChange={(e) => setEvolutionLine(e.target.value)} />
-                  <input placeholder="Collection (your mini-set)" value={collection} onChange={(e) => setCollection(e.target.value)} />
-                  <input placeholder="Tags, comma separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
-                </div>
-              )}
-            </>
-          )}
+          <div className="bank-meta-fields">
+            <input placeholder="Evolution line (e.g. Charmander)" value={evolutionLine} onChange={(e) => setEvolutionLine(e.target.value)} />
+            <input placeholder="Collection (your mini-set)" value={collection} onChange={(e) => setCollection(e.target.value)} />
+            <input placeholder="Tags, comma separated" value={tagsText} onChange={(e) => setTagsText(e.target.value)} />
+          </div>
 
           {isWishlistLinked && onUpdateBankItem && (
             <button
@@ -232,7 +291,7 @@ export default function PocketEditor({
           )}
 
           <div className="edit-actions">
-            <button className="save-btn" disabled={saving} onClick={() => void handleSave()}>
+            <button className="save-btn" disabled={saving || !name.trim()} onClick={() => void handleSave()}>
               {saving ? "Saving…" : "Save"}
             </button>
             <button className="cancel-btn" onClick={onCancel}>Cancel</button>

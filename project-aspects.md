@@ -32,7 +32,7 @@ Behavior that matters when changing the UI:
 
 - Planner state autosaves to the server, with a loading / saved / saving / error indicator.
 - Pockets support drag-to-swap and click-to-place from the bank (Escape cancels place mode).
-- A pocket stores a snapshot of the card plus a `bankId` link back to the bank item.
+- A filled pocket is an instance of a bank card (`bankId` required). Display resolves from the bank; the pocket’s own field is the local `tag`.
 - First load in a browser that still has the old single-file planner offers to import `localStorage` (`binderPlannerState_v1`).
 - Bank forms and filters already use tags and collections. The Tags and Collections screens are read-only previews, including disabled rule, bulk-apply, slot-label, and Optimize panels.
 
@@ -81,7 +81,7 @@ Pages are sides of double-sided sheets. An odd side count is padded with a blank
 
 ## Card identity
 
-A pocket stores a copy of the card plus a `bankId`. Editing the bank item does not rewrite pockets that already hold it. Have and want are independent flags on the same row. Import merges on `apiId` within a game, or on name + set + number when there is no `apiId`. Tags are a list; collection is a single string. That split is the open question before the Tags and Collections manager, the rules engine, and slot labels (a tag or collection attached to a slot, page, or section so placed cards inherit it). See [docs/labels-and-optimize.md](docs/labels-and-optimize.md).
+A filled pocket is always a bank card instance (`bankId`). Card fields (name, set, number, image, artist, have/want, …) live on the bank item; the UI resolves them live via `resolveSlotView`. The pocket stores `bankId` plus a pocket-local `tag` (denormalized name/note/image may still sit in slot JSON for older data). Editing the bank updates every pocket that links to it. Orphans (deleted bank row) show a missing-card state, not a freeform editor. Have and want are independent flags on the same bank row. Import merges on `apiId` within a game, or on name + set + number when there is no `apiId`. Tags are a list; collection is a single string. That split is the open question before the Tags and Collections manager, the rules engine, and slot labels (a tag or collection attached to a slot, page, or section so placed cards inherit it). See [docs/labels-and-optimize.md](docs/labels-and-optimize.md).
 
 ## Outside data
 

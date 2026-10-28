@@ -34,8 +34,8 @@ test("add to bank from New tab, place from Bank tab and from Bank page", async (
   await editor.getByPlaceholder("Card name").fill("Pikachu");
   await editor.getByRole("button", { name: "Look up" }).click();
   await editor.getByRole("button", { name: /Pikachu — Base #58/ }).click();
-  await expect(editor.getByLabel(/Also add to bank/)).toBeChecked();
-  await expect(editor.getByText(/Creates a new bank or wishlist entry/)).toBeVisible();
+  await expect(editor.getByText(/Saving creates a bank card/i)).toBeVisible();
+  await expect(editor.getByLabel(/Also add to bank/)).toHaveCount(0);
   await editor.getByRole("button", { name: "Save", exact: true }).click();
   await expect(page.locator(".pocket .card-overlay-name").first()).toHaveText(/pikachu/i);
 
@@ -94,7 +94,7 @@ test("bank filter multi-select narrows and clears", async ({ page }) => {
   await editor.getByPlaceholder("Card name").fill("Eevee");
   await editor.getByRole("button", { name: "Look up" }).click();
   await editor.getByRole("button", { name: /Eevee — SVP #173/ }).click();
-  await expect(editor.getByLabel(/Also add to bank/)).toBeChecked();
+  await expect(editor.getByLabel(/Also add to bank/)).toHaveCount(0);
   await editor.getByRole("button", { name: "Save", exact: true }).click();
 
   await page.getByRole("button", { name: "Bank", exact: true }).click();

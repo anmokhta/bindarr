@@ -34,7 +34,7 @@ test("wishlist card is grayscale in a pocket, then joins the bank when obtained"
   await expect(editor.getByRole("heading", { name: "Edit pocket" })).toBeVisible();
   await expect(editor.getByRole("tab", { name: "Details" })).toBeVisible();
   await expect(editor.getByText(/On wishlist/i)).toBeVisible();
-  await expect(editor.getByText(/does not add another bank entry/i)).toBeVisible();
+  await expect(editor.getByText(/Save updates the bank; tag is for this pocket only/i)).toBeVisible();
   await expect(editor.getByLabel(/Also add to bank/)).toHaveCount(0);
   await expect(editor.getByRole("button", { name: "Mark obtained" })).toBeVisible();
   await editor.getByRole("button", { name: "Close editor" }).click();
@@ -54,7 +54,7 @@ test("wishlist card is grayscale in a pocket, then joins the bank when obtained"
   // Linked have pocket: In bank note, no add-to-bank checkbox.
   await page.locator(".pocket").first().click();
   await expect(page.locator(".editor-sidebar").getByText(/In bank/i)).toBeVisible();
-  await expect(page.locator(".editor-sidebar").getByText(/Save updates this pocket only/i)).toBeVisible();
+  await expect(page.locator(".editor-sidebar").getByText(/Save updates the bank; tag is for this pocket only/i)).toBeVisible();
   await expect(page.locator(".editor-sidebar").getByLabel(/Also add to bank/)).toHaveCount(0);
 });
 

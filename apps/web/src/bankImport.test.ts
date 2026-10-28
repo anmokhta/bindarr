@@ -128,12 +128,17 @@ describe("parseBankImportCsv PriceCharting", () => {
   });
 
   it("parses bulk-add paste lines", () => {
-    const lines = parseBulkAddLines("Pikachu #58\nCharizard, 4\n\nMewtwo\t150\nJust a name\n");
+    const lines = parseBulkAddLines(
+      "Pikachu #58\nCharizard, 4\n\nMewtwo\t150\nJust a name\nampharos 90\nCharizard V SWSH050\nPalkia G LV.X\n",
+    );
     expect(lines).toEqual([
       { raw: "Pikachu #58", name: "Pikachu", number: "58", ok: true },
       { raw: "Charizard, 4", name: "Charizard", number: "4", ok: true },
       { raw: "Mewtwo\t150", name: "Mewtwo", number: "150", ok: true },
       { raw: "Just a name", name: "Just a name", number: "", ok: true },
+      { raw: "ampharos 90", name: "ampharos", number: "90", ok: true },
+      { raw: "Charizard V SWSH050", name: "Charizard V", number: "SWSH050", ok: true },
+      { raw: "Palkia G LV.X", name: "Palkia G LV.X", number: "", ok: true },
     ]);
   });
 

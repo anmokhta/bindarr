@@ -273,14 +273,89 @@ export function parseAppSettings(value: unknown): AppSettings {
   return r.success ? r.data : defaultSettings();
 }
 
-/** Convert a bank item into a pocket slot (snapshot, linked by bankId). */
-export function bankItemToSlot(item: BankItem): CardSlot {
-  const noteParts = [item.set, item.number ? `#${item.number}` : ""].filter(Boolean);
+/** Note line shown on a pocket for a bank card (set #number, or bank note). */
+export function bankItemPocketNote(item: BankItem): string {
+  if (item.note?.trim()) return item.note.trim();
+  return [item.set, item.number ? `#${item.number}` : ""].filter(Boolean).join(" ");
+}
+
+/** Convert a bank item into a pocket slot (linked by bankId; denormalized fields for JSON compat). */
+export function bankItemToSlot(item: BankItem, tag: CardTag = "none"): CardSlot {
   return {
     name: item.name,
-    tag: "none",
-    note: item.note || noteParts.join(" "),
+    tag,
+    note: bankItemPocketNote(item),
     image: item.image,
     bankId: item.id,
+  };
+}
+
+export interface SlotView {
+  name: string;
+  note: string;
+  image: string | null;
+  tag: CardTag;
+  bankId: string | null;
+  linked: boolean;
+  orphan: boolean;
+  wishlistOnly: boolean;
+  artist: string | null;
+}
+
+function findBankItem(bankId: string, bankItems: Iterable<BankItem>): BankItem | undefined {
+  for (const item of bankItems) {
+    if (item.id === bankId) return item;
+  }
+  return undefined;
+}
+
+/**
+ * Resolve what a pocket should show. Linked pockets always use the bank card;
+ * orphans (deleted bank row) show a missing-card state; legacy unlinked slots
+ * fall back to denormalized slot fields.
+ */
+export function resolveSlotView(
+  slot: CardSlot | null,
+  bankItems: Iterable<BankItem>,
+): SlotView | null {
+  if (!slot) return null;
+  const bankId = slot.bankId?.trim() || null;
+  if (bankId) {
+    const bank = findBankItem(bankId, bankItems);
+    if (bank) {
+      return {
+        name: bank.name,
+        note: bankItemPocketNote(bank),
+        image: bank.image,
+        tag: slot.tag,
+        bankId: bank.id,
+        linked: true,
+        orphan: false,
+        wishlistOnly: bank.want && !bank.have,
+        artist: bank.artist,
+      };
+    }
+    return {
+      name: "Missing bank card",
+      note: "This pocket’s bank entry was removed",
+      image: null,
+      tag: slot.tag,
+      bankId,
+      linked: false,
+      orphan: true,
+      wishlistOnly: false,
+      artist: null,
+    };
+  }
+  return {
+    name: slot.name,
+    note: slot.note,
+    image: slot.image,
+    tag: slot.tag,
+    bankId: null,
+    linked: false,
+    orphan: false,
+    wishlistOnly: false,
+    artist: null,
   };
 }

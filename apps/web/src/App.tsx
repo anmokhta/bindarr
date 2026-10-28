@@ -517,8 +517,7 @@ export default function App() {
                     index={idx}
                     dragKey={`${sideIdx}:${idx}`}
                     card={card}
-                    wishlistOnly={(() => { const linked = card?.bankId ? bankItems.find((i) => i.id === card.bankId) : undefined; return !!linked && linked.want && !linked.have; })()}
-                    artist={card?.bankId ? (bankItems.find((i) => i.id === card.bankId)?.artist ?? null) : null}
+                    bankItems={bankItems}
                     onArtist={(name) => navigate(`/extras/artist-search?artist=${encodeURIComponent(name)}`)}
                     isEditing={editing?.page === sideIdx && editing?.slot === idx}
                     onEdit={() => {
