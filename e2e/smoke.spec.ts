@@ -1,7 +1,14 @@
 import { expect, test } from "@playwright/test";
 
 test("planner loads, edits a pocket in the sidebar, renames a page, and persists", async ({ page }) => {
-  await page.goto("/");
+  // Other specs may leave a non-9-pocket binder current (shared e2e DB).
+  await page.goto("/binders/manage");
+  const nine = page.locator(".binder-card", { has: page.getByRole("heading", { name: "9-Pocket Binder", exact: true }) });
+  if (!(await nine.evaluate((el) => el.classList.contains("current")))) {
+    await nine.getByRole("button", { name: "Select & open" }).click();
+  } else {
+    await page.getByRole("button", { name: "Planner", exact: true }).click();
+  }
   await expect(page.getByRole("heading", { name: "Bindarr", exact: true })).toBeVisible();
   await expect(page.getByText(/Card management and binder organizing/)).toBeVisible();
   await expect(page.locator(".pocket")).toHaveCount(9);
@@ -11,6 +18,8 @@ test("planner loads, edits a pocket in the sidebar, renames a page, and persists
   const editor = page.locator(".editor-sidebar");
   await expect(editor).toBeVisible();
   await expect(editor.getByText(/Add card|Edit pocket/)).toBeVisible();
+  // Empty pockets open on Bank; filled ones open Details. Form is on New/Details.
+  await editor.getByRole("tab", { name: /New|Details/ }).click();
   await editor.getByPlaceholder("Card name").fill("Pikachu");
   await editor.getByPlaceholder("Note (set, condition...)").fill("Base Set #58");
   await editor.getByRole("button", { name: "Save" }).click();

@@ -29,8 +29,21 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y python3 make g++
       - run: npm ci
+      - name: Disable Electron SUID sandbox helper on Linux CI
+        if: runner.os == 'Linux'
+        run: |
+          # electron-builder probes `electron --version`; the chrome-sandbox
+          # helper aborts on Ubuntu runners unless owned by root with mode 4755.
+          SANDBOX="node_modules/electron/dist/chrome-sandbox"
+          if [ -f "$SANDBOX" ]; then
+            sudo chown root:root "$SANDBOX"
+            sudo chmod 4755 "$SANDBOX"
+          fi
+          echo "ELECTRON_DISABLE_SANDBOX=1" >> "$GITHUB_ENV"
       - run: npm run build
       - run: npm run dist -w @bindarr/desktop-electron
+        env:
+          ELECTRON_DISABLE_SANDBOX: "1"
       - uses: actions/upload-artifact@v4
         with:
           name: bindarr-${{ matrix.artifact }}-${{ github.sha }}
@@ -76,6 +89,15 @@ jobs:
             console.log('version', ver);
           "
       - run: npm ci
+      - name: Disable Electron SUID sandbox helper on Linux CI
+        if: runner.os == 'Linux'
+        run: |
+          SANDBOX="node_modules/electron/dist/chrome-sandbox"
+          if [ -f "$SANDBOX" ]; then
+            sudo chown root:root "$SANDBOX"
+            sudo chmod 4755 "$SANDBOX"
+          fi
+          echo "ELECTRON_DISABLE_SANDBOX=1" >> "$GITHUB_ENV"
       - run: npm run build
         env:
           APP_VERSION: ${{ github.ref_name }}
@@ -83,6 +105,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_VERSION: ${{ github.ref_name }}
+          ELECTRON_DISABLE_SANDBOX: "1"
         run: |
           export APP_VERSION="${GITHUB_REF_NAME#v}"
           npm run dist:publish -w @bindarr/desktop-electron

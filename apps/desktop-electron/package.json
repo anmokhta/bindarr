@@ -11,8 +11,8 @@
   "scripts": {
     "start": "electron .",
     "prepare-backend": "node scripts/prepare-backend.mjs",
-    "dist": "node scripts/prepare-backend.mjs && electron-builder",
-    "dist:dir": "node scripts/prepare-backend.mjs && electron-builder --dir",
+    "dist": "node scripts/prepare-backend.mjs && electron-builder --publish never",
+    "dist:dir": "node scripts/prepare-backend.mjs && electron-builder --dir --publish never",
     "dist:publish": "node scripts/prepare-backend.mjs && electron-builder --publish always"
   },
   "dependencies": {

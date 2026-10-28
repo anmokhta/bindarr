@@ -27,6 +27,7 @@ test("3 sheets in a 2x2 binder = 24 slots, spreads, blocked shrink, size slider"
   const lastSpreadPockets = page.locator(".spread-wrap .binder-page").last().locator(".pocket");
   await lastSpreadPockets.first().click();
   const editor = page.locator(".editor-sidebar");
+  await editor.getByRole("tab", { name: "New" }).click();
   await editor.getByPlaceholder("Card name").fill("Blocker Card");
   await editor.getByRole("button", { name: "Save" }).click();
   await expect(page.locator(".spread-wrap")).toContainText(/Blocker Card/i);
