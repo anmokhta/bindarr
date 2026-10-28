@@ -31,6 +31,8 @@
     "appId": "com.bindarr.app",
     "productName": "Bindarr",
     "executableName": "bindarr",
+    "artifactName": "${productName}-${version}-${arch}.${ext}",
+    "desktopName": "bindarr.desktop",
     "files": [
       "**/*",
       "!scripts",
@@ -50,7 +52,11 @@
     ],
     "mac": { "category": "public.app-category-productivity", "target": ["dmg"] },
     "win": { "target": ["nsis"] },
-    "linux": { "category": "Utility", "target": ["AppImage", "deb"] },
+    "linux": {
+      "category": "Utility",
+      "target": ["AppImage", "deb"],
+      "syncDesktopName": true
+    },
     "deb": { "packageName": "bindarr" }
   }
 }
