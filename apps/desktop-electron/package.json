@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "description": "Bindarr desktop app (Electron shell around the local Bindarr server)",
+  "author": {
+    "name": "anmokhta",
+    "email": "anmokhta@users.noreply.github.com"
+  },
   "main": "main.cjs",
   "repository": {
     "type": "git",
