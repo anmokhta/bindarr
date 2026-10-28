@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeCardLookupName,
   parseBankImportCsv,
+  parseBulkAddLines,
   parsePriceChartingProductName,
   parsePriceChartingSet,
 } from "./bankImport.js";
@@ -124,6 +125,16 @@ describe("parseBankImportCsv PriceCharting", () => {
       number: "104",
       language: "ja",
     });
+  });
+
+  it("parses bulk-add paste lines", () => {
+    const lines = parseBulkAddLines("Pikachu #58\nCharizard, 4\n\nMewtwo\t150\nJust a name\n");
+    expect(lines).toEqual([
+      { raw: "Pikachu #58", name: "Pikachu", number: "58", ok: true },
+      { raw: "Charizard, 4", name: "Charizard", number: "4", ok: true },
+      { raw: "Mewtwo\t150", name: "Mewtwo", number: "150", ok: true },
+      { raw: "Just a name", name: "Just a name", number: "", ok: true },
+    ]);
   });
 
   it("still parses Bindarr-native CSV", () => {

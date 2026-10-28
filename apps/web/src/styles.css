@@ -501,6 +501,24 @@ header p { margin: 0 0 8px; color: var(--ink-soft); font-size: 14px; max-width: 
 .ptcg-result { display: flex; align-items: center; gap: 6px; padding: 3px 5px; border: 1px solid var(--pocket-border); border-radius: 4px; cursor: pointer; background: var(--paper-raised); font-size: 10.5px; text-align: left; color: var(--ink); font-family: 'IBM Plex Sans', sans-serif; }
 .ptcg-result img { width: 20px; height: auto; border-radius: 2px; flex-shrink: 0; }
 .ptcg-result:hover { border-color: var(--vinyl-light); }
+.ptcg-result.selected { border-color: var(--vinyl); background: color-mix(in srgb, var(--vinyl) 12%, var(--paper-raised)); }
+.bulk-add-textarea {
+  width: 100%;
+  min-height: 220px;
+  margin-top: 6px;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-raised);
+  color: var(--ink);
+  resize: vertical;
+}
+.bulk-add-review { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.bulk-add-preview { max-height: 180px; width: auto; border-radius: 6px; }
+.bulk-add-review .ptcg-results { max-height: 240px; }
 .pocket.filled .card-thumb { width: 100%; max-height: 64px; object-fit: contain; margin-top: 6px; border-radius: 3px; }
 .pocket.has-image { padding: 0; }
 .pocket.has-image .tag-bar { z-index: 2; }

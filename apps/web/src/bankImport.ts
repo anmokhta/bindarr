@@ -146,6 +146,44 @@ export function parseBankImportCsv(text: string, game: string): BankImportResult
   return { format: "bindarr", items };
 }
 
+export interface BulkAddLine {
+  raw: string;
+  name: string;
+  number: string;
+  ok: boolean;
+  error?: string;
+}
+
+/**
+ * Parse pasted bulk-add lines into name + number.
+ * Accepts: `Pikachu #58`, `Pikachu, 58`, `Pikachu\t58`, or name-only.
+ */
+export function parseBulkAddLines(text: string): BulkAddLine[] {
+  const out: BulkAddLine[] = [];
+  for (const rawLine of text.split(/\r?\n/)) {
+    const raw = rawLine.trim();
+    if (!raw) continue;
+    let name = "";
+    let number = "";
+    const hash = raw.match(/^(.+?)\s+#(\S+)\s*$/);
+    if (hash) {
+      name = normalizeCardLookupName(hash[1].trim());
+      number = hash[2].trim();
+    } else {
+      const parts = raw.split(/[,\t]/).map((p) => p.trim()).filter(Boolean);
+      if (parts.length >= 2) {
+        name = normalizeCardLookupName(parts.slice(0, -1).join(" "));
+        number = parts[parts.length - 1]!.replace(/^#/, "");
+      } else {
+        name = normalizeCardLookupName(raw);
+      }
+    }
+    if (!name) out.push({ raw, name: "", number: "", ok: false, error: "Missing name" });
+    else out.push({ raw, name, number, ok: true });
+  }
+  return out;
+}
+
 /** Parse uploaded bank import text (CSV Bindarr/PriceCharting, or JSON array). */
 export function parseBankImport(text: string, game: string, filename = ""): BankImportResult {
   const trimmed = text.trim();

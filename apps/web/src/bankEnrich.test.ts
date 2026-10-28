@@ -42,6 +42,7 @@ function item(partial: Partial<BankItem> & Pick<BankItem, "id" | "name">): BankI
     year: null,
     language: null,
     condition: null,
+    createdAt: null,
     ...partial,
   };
 }
@@ -253,6 +254,16 @@ describe("filterByImage / sortBankItems", () => {
 
   it("sorts by name ascending", () => {
     expect(sortBankItems(sample, "name", "asc").map((i) => i.name)).toEqual(["Abra", "Mew", "Zapdos"]);
+  });
+
+  it("sorts by date added", () => {
+    const dated = [
+      item({ id: "1", name: "Zapdos", createdAt: "2026-01-03T00:00:00.000Z" }),
+      item({ id: "2", name: "Abra", createdAt: "2026-01-01T00:00:00.000Z" }),
+      item({ id: "3", name: "Mew", createdAt: "2026-01-02T00:00:00.000Z" }),
+    ];
+    expect(sortBankItems(dated, "createdAt", "asc").map((i) => i.name)).toEqual(["Abra", "Mew", "Zapdos"]);
+    expect(sortBankItems(dated, "createdAt", "desc").map((i) => i.name)).toEqual(["Zapdos", "Mew", "Abra"]);
   });
 
   it("sorts numbers with mixed alphanumeric", () => {

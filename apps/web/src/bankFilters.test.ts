@@ -21,6 +21,7 @@ function item(partial: Partial<BankItem> & Pick<BankItem, "id" | "name">): BankI
     year: null,
     language: null,
     condition: null,
+    createdAt: null,
     ...partial,
   };
 }

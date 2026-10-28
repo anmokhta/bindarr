@@ -375,6 +375,7 @@ export default function BankPage({
                 <option value="set">Set</option>
                 <option value="number">Number</option>
                 <option value="artist">Artist</option>
+                <option value="createdAt">Date added</option>
               </select>
             </label>
             <label className="bank-sort-control">

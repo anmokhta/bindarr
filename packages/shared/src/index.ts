@@ -235,12 +235,20 @@ export const bankItemSchema = z.object({
   year: z.number().int().nullable().default(null),
   language: z.string().nullable().default(null),
   condition: z.string().nullable().default(null),
+  /** Set by API from bank_items.created_at; not stored inside the JSON blob. */
+  createdAt: z.string().nullable().default(null),
 });
 export type BankItem = z.infer<typeof bankItemSchema>;
 
 export function parseBankItem(value: unknown): BankItem | null {
   const r = bankItemSchema.safeParse(value);
   return r.success ? r.data : null;
+}
+
+/** Drop API-only fields before persisting the bank JSON blob. */
+export function bankItemStoragePayload(item: BankItem): Omit<BankItem, "createdAt"> {
+  const { createdAt: _createdAt, ...rest } = item;
+  return rest;
 }
 
 export const NAV_STYLES = {

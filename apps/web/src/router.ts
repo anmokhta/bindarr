@@ -4,6 +4,7 @@ export type Route =
   | "/binders/planner"
   | "/bank/cards"
   | "/bank/wishlist"
+  | "/bank/bulk-add"
   | "/bank/tags"
   | "/bank/collections"
   | "/binders/manage"
@@ -14,6 +15,7 @@ const ROUTES: Route[] = [
   "/binders/planner",
   "/bank/cards",
   "/bank/wishlist",
+  "/bank/bulk-add",
   "/bank/tags",
   "/bank/collections",
   "/binders/manage",

@@ -38,17 +38,19 @@ import BankPage from "./components/BankPage.js";
 import BindersPage from "./components/BindersPage.js";
 import SettingsPage, { applyTheme, initialTheme } from "./components/SettingsPage.js";
 import ArtistSearchPage from "./components/ArtistSearchPage.js";
+import BulkAddPage from "./components/BulkAddPage.js";
 import SubNav from "./components/SubNav.js";
 import { CollectionsPage, TagsPage } from "./components/TaxonomyPages.js";
 import { previousRoute, useRoute, type Route } from "./router.js";
 
 type SaveStatus = "loading" | "saved" | "saving" | "error";
-type View = "planner" | "bank" | "wishlist" | "tags" | "collections" | "binders" | "artist" | "settings";
+type View = "planner" | "bank" | "wishlist" | "bulkAdd" | "tags" | "collections" | "binders" | "artist" | "settings";
 
 const VIEW_PATHS: Record<View, string> = {
   planner: "/binders/planner",
   bank: "/bank/cards",
   wishlist: "/bank/wishlist",
+  bulkAdd: "/bank/bulk-add",
   tags: "/bank/tags",
   collections: "/bank/collections",
   binders: "/binders/manage",
@@ -60,6 +62,7 @@ function viewForRoute(route: Route): View {
   switch (route) {
     case "/bank/cards": return "bank";
     case "/bank/wishlist": return "wishlist";
+    case "/bank/bulk-add": return "bulkAdd";
     case "/bank/tags": return "tags";
     case "/bank/collections": return "collections";
     case "/binders/manage": return "binders";
@@ -72,13 +75,24 @@ function viewForRoute(route: Route): View {
 type Section = "bank" | "binders" | "extras";
 
 const SECTIONS: { id: Section; label: string; defaultView: View; subsections: [View, string][] }[] = [
-  { id: "bank", label: "Bank", defaultView: "bank", subsections: [["bank", "Cards"], ["wishlist", "Wishlist"], ["tags", "Tags"], ["collections", "Collections"]] },
+  {
+    id: "bank",
+    label: "Bank",
+    defaultView: "bank",
+    subsections: [
+      ["bank", "Cards"],
+      ["wishlist", "Wishlist"],
+      ["bulkAdd", "Bulk add"],
+      ["tags", "Tags"],
+      ["collections", "Collections"],
+    ],
+  },
   { id: "binders", label: "Binders", defaultView: "planner", subsections: [["planner", "Planner"], ["binders", "Manage Binders"]] },
   { id: "extras", label: "Extras", defaultView: "artist", subsections: [["artist", "Artist Search"]] },
 ];
 
 function sectionForView(view: View): Section {
-  if (view === "bank" || view === "wishlist" || view === "tags" || view === "collections") return "bank";
+  if (view === "bank" || view === "wishlist" || view === "bulkAdd" || view === "tags" || view === "collections") return "bank";
   if (view === "artist") return "extras";
   return "binders";
 }
@@ -383,6 +397,12 @@ export default function App() {
             onRestore: (id) => mutate((d) => { const b = d.binders.find((x) => x.id === id); if (b) b.archivedAt = null; }),
             onDelete: (id) => mutate((d) => { d.binders = d.binders.filter((x) => x.id !== id); }),
           }}
+        />
+      )}
+      {view === "bulkAdd" && (
+        <BulkAddPage
+          visibleBanks={appSettings.visibleGames}
+          onImported={async () => { setBankItems(await fetchBank()); }}
         />
       )}
       {view === "tags" && <TagsPage items={bankItems} />}

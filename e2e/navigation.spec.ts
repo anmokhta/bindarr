@@ -16,6 +16,11 @@ test("two-level task bar, legacy redirects, and taxonomy skeletons", async ({ pa
   const section = page.getByRole("navigation", { name: "Section" });
   await expect(section.getByRole("button", { name: "Cards" })).toHaveClass(/active/);
 
+  await section.getByRole("button", { name: "Bulk add" }).click();
+  await expect(page).toHaveURL(/\/bank\/bulk-add$/);
+  await expect(page.getByRole("heading", { name: "Bulk add" })).toBeVisible();
+  await expect(page.getByLabel("Card list")).toBeVisible();
+
   // Tags skeleton reflects seeded bank data (Pikachu/Charizard from other specs may exist).
   await section.getByRole("button", { name: "Tags" }).click();
   await expect(page).toHaveURL(/\/bank\/tags$/);

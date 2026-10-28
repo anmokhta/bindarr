@@ -177,7 +177,7 @@ export function needsImageEnrich(item: BankItem): boolean {
   return isEmpty(item.image);
 }
 
-export type BankSortBy = "name" | "set" | "number" | "artist";
+export type BankSortBy = "name" | "set" | "number" | "artist" | "createdAt";
 export type BankSortOrder = "asc" | "desc";
 
 function compareNumbers(a: string, b: string): number {
@@ -212,6 +212,7 @@ export function sortBankItems(
     if (sortBy === "name") cmp = compareText(a.name, b.name);
     else if (sortBy === "set") cmp = compareText(a.set ?? "", b.set ?? "");
     else if (sortBy === "number") cmp = compareNumbers(a.number ?? "", b.number ?? "");
+    else if (sortBy === "createdAt") cmp = compareText(a.createdAt ?? "", b.createdAt ?? "");
     else cmp = compareText(a.artist ?? "", b.artist ?? "");
     if (cmp === 0 && sortBy !== "name") cmp = compareText(a.name, b.name);
     return cmp * dir;

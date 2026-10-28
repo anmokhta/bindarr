@@ -189,11 +189,18 @@ describe("server API", () => {
       const bad = await app.inject({ method: "POST", url: "/api/bank", payload: { game: "pokemon" } });
       expect(bad.statusCode).toBe(400);
 
+      expect(created.json().item.createdAt).toBeTruthy();
+      const createdAt = created.json().item.createdAt as string;
+
       const updated = await app.inject({
         method: "PUT", url: `/api/bank/${id}`,
         payload: { game: "pokemon", name: "Pikachu", set: "Base", number: "58", collection: "Favorites" },
       });
       expect(updated.json().item.collection).toBe("Favorites");
+      expect(updated.json().item.createdAt).toBe(createdAt);
+
+      const listed = await app.inject({ method: "GET", url: "/api/bank?game=pokemon" });
+      expect(listed.json().items[0].createdAt).toBe(createdAt);
 
       const del = await app.inject({ method: "DELETE", url: `/api/bank/${id}` });
       expect(del.statusCode).toBe(200);

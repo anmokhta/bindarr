@@ -8,6 +8,7 @@ import {
   defaultSettings,
   defaultState,
   parseAppSettings,
+  bankItemStoragePayload,
   parseBankItem,
   parsePlannerState,
   type BankItem,
@@ -60,6 +61,7 @@ const SCHEMA_SQL = `
     id TEXT PRIMARY KEY,
     game TEXT NOT NULL,
     data TEXT NOT NULL,
+    created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
   CREATE TABLE IF NOT EXISTS app_settings (
@@ -78,14 +80,29 @@ const SCHEMA_SQL = `
   CREATE INDEX IF NOT EXISTS idx_api_calls_created ON api_calls (created_at);
 `;
 
+function migrateBankCreatedAt(db: ReturnType<typeof Database>) {
+  const cols = db.prepare("PRAGMA table_info(bank_items)").all() as { name: string }[];
+  if (!cols.some((c) => c.name === "created_at")) {
+    db.exec("ALTER TABLE bank_items ADD COLUMN created_at TEXT");
+  }
+  // Existing rows: use last updated_at as best-effort date added.
+  db.exec("UPDATE bank_items SET created_at = updated_at WHERE created_at IS NULL OR created_at = ''");
+}
+
 export function openDb(databasePath: string, readonly = false) {
   if (databasePath !== ":memory:" && !readonly) mkdirSync(dirname(resolve(databasePath)), { recursive: true });
   const db = new Database(databasePath, readonly ? { readonly: true, fileMustExist: true } : undefined);
   if (!readonly) {
     db.pragma("journal_mode = WAL");
     db.exec(SCHEMA_SQL);
+    migrateBankCreatedAt(db);
   }
   return db;
+}
+
+function bankRowToItem(row: { data: string; created_at?: string | null }): BankItem {
+  const parsed = JSON.parse(row.data) as BankItem;
+  return { ...parsed, createdAt: row.created_at || null };
 }
 
 function resolveAppVersion(explicit?: string): string {
@@ -365,9 +382,12 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   app.get("/api/bank", async (req) => {
     const { game } = (req.query ?? {}) as { game?: string };
     const rows = (game
-      ? db.prepare("SELECT data FROM bank_items WHERE game = ? ORDER BY updated_at DESC").all(game)
-      : db.prepare("SELECT data FROM bank_items ORDER BY updated_at DESC").all()) as { data: string }[];
-    return { items: rows.map((r) => JSON.parse(r.data)) as BankItem[] };
+      ? db.prepare("SELECT data, created_at FROM bank_items WHERE game = ? ORDER BY updated_at DESC").all(game)
+      : db.prepare("SELECT data, created_at FROM bank_items ORDER BY updated_at DESC").all()) as {
+      data: string;
+      created_at: string | null;
+    }[];
+    return { items: rows.map(bankRowToItem) };
   });
 
   app.post("/api/bank", async (req, reply) => {
@@ -375,11 +395,15 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     const body = (req.body ?? {}) as Record<string, unknown>;
     const item = parseBankItem({ ...body, id: typeof body.id === "string" && body.id ? body.id : randomUUID() });
     if (!item) return reply.code(400).send({ error: "Invalid bank item" });
+    const now = new Date().toISOString();
+    const payload = JSON.stringify(bankItemStoragePayload(item));
     db.prepare(
-      `INSERT INTO bank_items (id, game, data, updated_at) VALUES (?, ?, ?, ?)
+      `INSERT INTO bank_items (id, game, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET game = excluded.game, data = excluded.data, updated_at = excluded.updated_at`,
-    ).run(item.id, item.game, JSON.stringify(item), new Date().toISOString());
-    return { item };
+    ).run(item.id, item.game, payload, now, now);
+    const createdAt = (db.prepare("SELECT created_at FROM bank_items WHERE id = ?").get(item.id) as { created_at: string } | undefined)
+      ?.created_at ?? now;
+    return { item: { ...item, createdAt } };
   });
 
   app.put("/api/bank/:id", async (req, reply) => {
@@ -387,11 +411,11 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     const { id } = req.params as { id: string };
     const item = parseBankItem({ ...((req.body ?? {}) as Record<string, unknown>), id });
     if (!item) return reply.code(400).send({ error: "Invalid bank item" });
-    const exists = db.prepare("SELECT id FROM bank_items WHERE id = ?").get(id);
+    const exists = db.prepare("SELECT created_at FROM bank_items WHERE id = ?").get(id) as { created_at: string } | undefined;
     if (!exists) return reply.code(404).send({ error: "Bank item not found" });
     db.prepare("UPDATE bank_items SET game = ?, data = ?, updated_at = ? WHERE id = ?")
-      .run(item.game, JSON.stringify(item), new Date().toISOString(), id);
-    return { item };
+      .run(item.game, JSON.stringify(bankItemStoragePayload(item)), new Date().toISOString(), id);
+    return { item: { ...item, createdAt: exists.created_at } };
   });
 
   app.delete("/api/bank/:id", async (req, reply) => {
@@ -406,8 +430,8 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
     if (requireWrite(reply)) return;
     const body = (req.body ?? {}) as { items?: unknown[] };
     if (!Array.isArray(body.items)) return reply.code(400).send({ error: "Expected { items: [...] }" });
-    const existing = (db.prepare("SELECT data FROM bank_items").all() as { data: string }[])
-      .map((r) => JSON.parse(r.data) as BankItem);
+    const existing = (db.prepare("SELECT data, created_at FROM bank_items").all() as { data: string; created_at: string | null }[])
+      .map(bankRowToItem);
     let created = 0;
     let updated = 0;
     for (const raw of body.items) {
@@ -418,15 +442,16 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
         (e.game === parsed.game && e.name.toLowerCase() === parsed.name.toLowerCase() && e.set === parsed.set && e.number === parsed.number),
       );
       if (match) {
-        const merged: BankItem = { ...match, ...parsed, id: match.id };
+        const merged: BankItem = { ...match, ...parsed, id: match.id, createdAt: match.createdAt };
         db.prepare("UPDATE bank_items SET game = ?, data = ?, updated_at = ? WHERE id = ?")
-          .run(merged.game, JSON.stringify(merged), new Date().toISOString(), match.id);
+          .run(merged.game, JSON.stringify(bankItemStoragePayload(merged)), new Date().toISOString(), match.id);
         Object.assign(match, merged);
         updated++;
       } else {
-        db.prepare("INSERT INTO bank_items (id, game, data, updated_at) VALUES (?, ?, ?, ?)")
-          .run(parsed.id, parsed.game, JSON.stringify(parsed), new Date().toISOString());
-        existing.push(parsed);
+        const now = new Date().toISOString();
+        db.prepare("INSERT INTO bank_items (id, game, data, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+          .run(parsed.id, parsed.game, JSON.stringify(bankItemStoragePayload(parsed)), now, now);
+        existing.push({ ...parsed, createdAt: now });
         created++;
       }
     }
