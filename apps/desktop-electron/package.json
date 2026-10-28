@@ -26,6 +26,7 @@
   "build": {
     "appId": "com.bindarr.app",
     "productName": "Bindarr",
+    "executableName": "bindarr",
     "files": [
       "**/*",
       "!scripts",
