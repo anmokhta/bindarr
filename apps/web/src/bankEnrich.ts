@@ -139,9 +139,22 @@ export async function lookupCardsWithFallbacks(opts: {
     }
   }
 
+  // JP: try TCGdex ja first (Japanese names), then EN for PriceCharting English names.
+  // Always exclude Pocket-only hits when language is Japanese.
+  const preferredLang: "en" | "ja" = japanese ? "ja" : "en";
+
   for (const [n, num, s] of attempts) {
-    const cards = await lookupCards(n, num, s);
-    if (cards.length > 0) return cards;
+    let cards = await lookupCards(n, num, s, preferredLang);
+    if (japanese && cards.length === 0) {
+      cards = await lookupCards(n, num, s, "en");
+    }
+    if (!cards.length) continue;
+    if (japanese) {
+      const main = cards.filter((c) => !isPocketTcgHit(c));
+      if (main.length) return main;
+      continue;
+    }
+    return cards;
   }
   return [];
 }

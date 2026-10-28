@@ -17,6 +17,7 @@ function toImportPayload(
   staged: StagedCard,
   game: string,
   destination: Destination,
+  language: "en" | "ja",
 ): Record<string, unknown> {
   const have = destination === "have" || destination === "both";
   const want = destination === "want" || destination === "both";
@@ -33,6 +34,7 @@ function toImportPayload(
       evolutionLine: c.evolvesFrom ?? c.name,
       have,
       want,
+      language,
       tags: [],
     };
   }
@@ -43,6 +45,7 @@ function toImportPayload(
     number: staged.line.number,
     have,
     want,
+    language,
     tags: [],
   };
 }
@@ -61,6 +64,7 @@ export default function BulkAddPage({
   );
   const [game, setGame] = useState(banks[0] ?? "pokemon");
   const [destination, setDestination] = useState<Destination>("have");
+  const [cardLang, setCardLang] = useState<"en" | "ja">("en");
   const [text, setText] = useState("");
   const [phase, setPhase] = useState<Phase>("paste");
   const [queue, setQueue] = useState<BulkAddLine[]>([]);
@@ -99,7 +103,12 @@ export default function BulkAddPage({
     setLookupResults([]);
     setSelectedId(null);
     try {
-      const cards = await lookupCardsWithFallbacks({ name: name.trim(), number: number.trim(), set: "" });
+      const cards = await lookupCardsWithFallbacks({
+        name: name.trim(),
+        number: number.trim(),
+        set: "",
+        language: cardLang,
+      });
       setLookupResults(cards);
       const pick = pickLookupCard(cards);
       setSelectedId(pick?.id ?? null);
@@ -189,7 +198,7 @@ export default function BulkAddPage({
     setSummary("Saving…");
     try {
       if (finalStaged.length) {
-        const items = finalStaged.map((s) => toImportPayload(s, game, destination));
+        const items = finalStaged.map((s) => toImportPayload(s, game, destination, cardLang));
         const result = await importBankItems(items);
         await onImported();
         setSummary(
@@ -252,6 +261,19 @@ export default function BulkAddPage({
                 <option value="both">Have + Want</option>
               </select>
             </label>
+            {game !== "misc" && (
+              <label className="bank-sort-control">
+                <span>Language</span>
+                <select
+                  value={cardLang}
+                  onChange={(e) => setCardLang(e.target.value === "ja" ? "ja" : "en")}
+                  aria-label="Card language"
+                >
+                  <option value="en">English (EN)</option>
+                  <option value="ja">Japanese (JP)</option>
+                </select>
+              </label>
+            )}
           </div>
           <label className="field" style={{ display: "block", marginTop: 12 }}>
             <span className="field-label">Cards (one per line)</span>

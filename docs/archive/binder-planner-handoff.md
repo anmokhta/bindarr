@@ -2,7 +2,8 @@
 
 > **Superseded (2026-10-22):** this is the original single-file planner
 > handoff, kept for history. Current status, architecture, and goals
-> live in `README.md` and `docs/ROADMAP.md`. Nearly everything in the
+> live in `README.md` and `docs/ROADMAP.md` (paths relative to the repo
+> root). Nearly everything in the
 > roadmap below (card bank, import/export, multiple binders, sheets)
 > has since been built.
 
@@ -12,7 +13,7 @@ sleeving/moving cards around. Started as a single self-contained HTML file
 (vanilla JS/CSS, no build step, no framework) so it could run either as a
 Claude Artifact (hosted) or as a plain local file opened in a browser.
 
-Current file: `binder-page-planner.html`
+Current file: `Binder Page Planner.html` (repo root; historical single-file artifact)
 Currently published as a Claude Artifact at:
 https://claude.ai/artifact/3mUuZerCGa4rQvmy7dR27y
 

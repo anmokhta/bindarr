@@ -176,10 +176,16 @@ function mapTcgCard(c: Partial<TcgCard>): TcgCard {
   };
 }
 
-export async function lookupCards(name: string, number: string, set = ""): Promise<TcgCard[]> {
+export async function lookupCards(
+  name: string,
+  number: string,
+  set = "",
+  lang: "en" | "ja" = "en",
+): Promise<TcgCard[]> {
   const params = new URLSearchParams({ name });
   if (number.trim()) params.set("number", number.trim());
   if (set.trim()) params.set("set", set.trim());
+  if (lang === "ja") params.set("lang", "ja");
   const res = await fetch(`/api/lookup?${params}`);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error ?? `Lookup failed (HTTP ${res.status})`);

@@ -346,16 +346,22 @@ export async function buildApp(opts: ServerOptions = {}): Promise<FastifyInstanc
   }
 
   app.get("/api/lookup", async (req, reply) => {
-    const { name, number, set } = (req.query ?? {}) as { name?: string; number?: string; set?: string };
+    const { name, number, set, lang: langRaw } = (req.query ?? {}) as {
+      name?: string;
+      number?: string;
+      set?: string;
+      lang?: string;
+    };
     const cleanName = (name ?? "").replace(/"/g, "").trim();
     if (!cleanName) return reply.code(400).send({ error: "A card name is required to search" });
     const cleanNumber = (number ?? "").trim().replace(/[^\w-]/g, "");
     const cleanSet = (set ?? "").replace(/"/g, "").trim();
-    const callLabel = `cards?name=${cleanName}${cleanNumber ? `&localId=${cleanNumber}` : ""}${cleanSet ? `&set.name=${cleanSet}` : ""}`;
+    const lang = (langRaw ?? "").trim().toLowerCase() === "ja" ? "ja" : "en";
+    const callLabel = `cards?lang=${lang}&name=${cleanName}${cleanNumber ? `&localId=${cleanNumber}` : ""}${cleanSet ? `&set.name=${cleanSet}` : ""}`;
     const cacheKey = `tcgdex:${callLabel}`;
 
     const result = await lookupWithCache(cacheKey, callLabel, () =>
-      tcg.searchCards({ name: cleanName, number: cleanNumber, set: cleanSet, pageSize: 8 }),
+      tcg.searchCards({ name: cleanName, number: cleanNumber, set: cleanSet, pageSize: 8, lang }),
     );
     if ("error" in result) return reply.code(result.status).send({ error: result.error });
     return result;

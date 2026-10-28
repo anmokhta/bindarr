@@ -76,7 +76,7 @@ describe("lookupCardsWithFallbacks", () => {
     const out = await lookupCardsWithFallbacks({ name: "Pikachu [Holo]", number: "58", set: "Base" });
     expect(out).toEqual([tcg]);
     expect(lookupMock).toHaveBeenCalledTimes(1);
-    expect(lookupMock).toHaveBeenCalledWith("Pikachu [Holo]", "58", "Base");
+    expect(lookupMock).toHaveBeenCalledWith("Pikachu [Holo]", "58", "Base", "en");
   });
 
   it("retries without brackets when first call is empty", async () => {
@@ -87,8 +87,8 @@ describe("lookupCardsWithFallbacks", () => {
       set: "Promo",
     });
     expect(out).toEqual([tcg]);
-    expect(lookupMock).toHaveBeenNthCalledWith(1, "Archeops [Fossil Museum Exclusive]", "51", "Promo");
-    expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "Promo");
+    expect(lookupMock).toHaveBeenNthCalledWith(1, "Archeops [Fossil Museum Exclusive]", "51", "Promo", "en");
+    expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "Promo", "en");
   });
 
   it("retries without set when strip+set is still empty (Promo / Vaporeon)", async () => {
@@ -110,8 +110,8 @@ describe("lookupCardsWithFallbacks", () => {
     const out = await lookupCardsWithFallbacks({ name: "Archeops", number: "51", set: "Promo" });
     expect(out).toEqual([tcg]);
     expect(lookupMock).toHaveBeenCalledTimes(2);
-    expect(lookupMock).toHaveBeenNthCalledWith(1, "Archeops", "51", "Promo");
-    expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "");
+    expect(lookupMock).toHaveBeenNthCalledWith(1, "Archeops", "51", "Promo", "en");
+    expect(lookupMock).toHaveBeenNthCalledWith(2, "Archeops", "51", "", "en");
   });
 
   it("does not retry without set when no set was given", async () => {
@@ -122,7 +122,8 @@ describe("lookupCardsWithFallbacks", () => {
   });
 
   it("for Japanese cards drops number after set fails (JP localId ≠ EN)", async () => {
-    lookupMock.mockImplementation(async (name, number, set) => {
+    lookupMock.mockImplementation(async (name, number, set, lang) => {
+      if (lang === "ja") return [];
       if (name === "Prime Catcher" && number === "" && set === "") return [tcg];
       return [];
     });
@@ -133,7 +134,24 @@ describe("lookupCardsWithFallbacks", () => {
       language: "ja",
     });
     expect(out).toEqual([tcg]);
-    expect(lookupMock.mock.calls.some((c) => c[0] === "Prime Catcher" && c[1] === "" && c[2] === "")).toBe(true);
+    expect(lookupMock.mock.calls.some((c) => c[0] === "Prime Catcher" && c[1] === "" && c[2] === "" && c[3] === "en")).toBe(true);
+    expect(lookupMock.mock.calls.some((c) => c[3] === "ja")).toBe(true);
+  });
+
+  it("skips Pocket-only hits for Japanese language", async () => {
+    const pocket: TcgCard = {
+      ...tcg,
+      id: "A1-181",
+      imageSmall: "https://assets.tcgdex.net/en/tcgp/A1/181/low.webp",
+    };
+    lookupMock.mockImplementation(async (_n, _num, _s, lang) => (lang === "ja" ? [] : [pocket]));
+    const out = await lookupCardsWithFallbacks({
+      name: "Meltan",
+      number: "81",
+      set: "Japanese Cyber Judge",
+      language: "ja",
+    });
+    expect(out).toEqual([]);
   });
 
   it("strips LV.X when TCGdex omits the suffix", async () => {
@@ -151,7 +169,8 @@ describe("lookupCardsWithFallbacks", () => {
   });
 
   it("normalizes Killowattrel typo before lookup", async () => {
-    lookupMock.mockImplementation(async (name) => {
+    lookupMock.mockImplementation(async (name, _n, _s, lang) => {
+      if (lang === "ja") return [];
       if (name === "Iono's Kilowattrel") return [tcg];
       return [];
     });

@@ -8,7 +8,8 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 ### Done
 - **Platform**: Docker self-hosted app (Fastify + SQLite, one volume),
   Electron desktop shell for macOS/Windows/Linux (unsigned), GitHub
-  Actions workflows for CI and desktop builds.
+  Actions workflows for CI and desktop builds; remote `anmokhta/bindarr`
+  is live (no `v*` Release cut yet for the desktop updater).
 - **Binders**: real named binders (create, rename, duplicate,
   archive/restore, permanent delete, current-binder indicator);
   layouts 3×3 (9), 2×2 (4), 4×3 (12 pockets); physical double-sided
@@ -18,16 +19,23 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 - **Bank**: one card table with independent have/want flags — Bank >
   Cards is the have view, Bank > Wishlist the want view (wishlist cards
   render grayscale in binders until marked obtained); per-game bank
-  sidebar, filters, JSON/CSV import/export with dedupe; Add/Edit card
-  in a modal with shared button styles.
+  sidebar, filters, sort (name/set/number/artist/date added), picture
+  filter; JSON/CSV import/export with dedupe (including PriceCharting);
+  checkbox bulk bar (add/remove tags, set collection, delete, Identify);
+  Bank > Bulk add (paste names/numbers, per-card TCGdex review, Have /
+  Want / Both, EN/JP language); Add/Edit card in a modal with shared
+  button styles and an EN/JP language field.
 - **Lookup**: Pokémon via TCGdex (`@tcgdex/sdk`) with retry, SQLite
-  cache, and stale fallback; Artist Search by illustrator; Settings
-  migrate for legacy pokemontcg.io image URLs; every upstream attempt
-  logged to Settings > Logs (`/settings?tab=calls`) with
-  1h/12h/24h/3d/7d/30d counts. PriceCharting Japanese imports set
-  `language=ja` and strip the Japanese set prefix; Identify prefers EN
-  counterparts (drop JP set/number, normalize LV.X / Ex), skips Carddass,
-  and avoids TCG Pocket false matches when a main-TCG hit exists.
+  cache, and stale fallback; optional `lang=ja` (Japanese catalog) with
+  EN fallback for JP Identify; exact `localId` matching (avoids Pocket
+  false positives like `81` → `#181`); Settings migrate for legacy
+  pokemontcg.io image URLs; every upstream attempt logged to Settings >
+  Logs (`/settings?tab=calls`) with 1h/12h/24h/3d/7d/30d counts.
+  PriceCharting Japanese imports set `language=ja` and strip the
+  Japanese set prefix; Identify skips Carddass, prefers main-TCG over
+  TCG Pocket when both exist, and for JP rows tries the JA catalog
+  first then EN. (Illustrator API exists for Artist Search; the Extras
+  feature itself is **not** shipped — see Scaffolded.)
 - **Routing**: every screen has a real URL; the task bar is two-level
   (Bank / Binders / Extras + subsections) and old URLs redirect.
 - **Desktop DB share + updates**: Electron first-run Create new / Use
@@ -37,9 +45,15 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 ### Scaffolded (UI exists, feature not built)
 - **Bank > Tags / Bank > Collections**: read-only previews of the tags
   and collections already on cards, with disabled rule/bulk-apply and
-  **Slot labels and Optimize** panels. Card forms and filters already
-  use tags (many per card) and collection (one per card). Design note:
+  **Slot labels and Optimize** panels. Card forms, filters, and the
+  Bank checkbox bulk bar already edit tags (many per card) and
+  collection (one per card); create/rename/delete for the taxonomy
+  itself is still planned. Design note:
   [labels-and-optimize.md](labels-and-optimize.md).
+- **Extras > Artist Search**: Planned badge on the page; thin TCGdex
+  illustrator proxy + preview grid only. **Not shipped** until UI redo,
+  clear in-app results, artofpkm links, and Save to bank. Design note:
+  [artist-search.md](artist-search.md).
 
 ## Open UI decisions
 
@@ -59,9 +73,11 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
    then optional auto-apply on create/import/update. Open questions:
    rule precedence on conflicting collection assignments, undo,
    whether imports trigger rules. Smart tags/collections live here.
-3. **Artist Search polish** (Extras): optional add-to-bank / place-from
-   results from the TCGdex illustrator grid (core search already ships;
-   see [artist-search.md](research/artist-search.md)).
+3. **Artist Search** (Extras): redesign UI; show TCGdex responses clearly
+   in-app; artofpkm illustrator (and related) links; Save to bank from
+   results. Keep Planned badge until done. See
+   [artist-search.md](artist-search.md) (API notes:
+   [research/artist-search.md](research/artist-search.md)).
 4. **Binder sections**: named groups of sides within a binder with
    filled/total rollups (deferred from the multiple-binders milestone).
    Sections are the anchor for slot labels and Optimize.
@@ -74,7 +90,8 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
    a before/after diff; Apply writes nothing until confirmed.
 7. **More games & release polish**: Magic/Yu-Gi-Oh!/Lorcana/One Piece
    lookups, full-app backup/restore in Settings, call-log pruning,
-   signed desktop builds, first GitHub remote + real CI run.
+   signed desktop builds, first `v*` GitHub Release (CI and remote
+   already exist; updater path untested end-to-end until a tag is cut).
 
 ## Route map
 
@@ -85,8 +102,9 @@ Organized by the app's task bar: **Bank**, **Binders**, **Extras**
 | `/binders/organize` (future) | Binders > Organize (Optimize) — not routed yet |
 | `/bank/cards` (`/bank`) | Bank > Cards |
 | `/bank/wishlist` (`/wishlist`) | Bank > Wishlist |
+| `/bank/bulk-add` | Bank > Bulk add |
 | `/bank/tags` | Bank > Tags (skeleton) |
 | `/bank/collections` | Bank > Collections (skeleton) |
-| `/extras/artist-search` (`/artist-search`) | Extras > Artist Search |
+| `/extras/artist-search` (`/artist-search`) | Extras > Artist Search (skeleton / Planned) |
 | `/settings` (`?tab=calls` / `?tab=nav-styles`) | Settings (standalone; Nav styles demos) |
 | `/extras/nav-styles` | redirects → `/settings?tab=nav-styles` |

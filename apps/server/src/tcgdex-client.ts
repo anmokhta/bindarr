@@ -12,18 +12,21 @@ export interface TcgCardResult {
 }
 
 export type TcgFetch = typeof fetch;
+export type TcgLang = "en" | "ja";
 
 export interface SearchCardsOpts {
   name: string;
   number?: string;
   set?: string;
   pageSize?: number;
+  lang?: TcgLang;
 }
 
 export interface SearchArtistOpts {
   illustrator: string;
   page?: number;
   pageSize?: number;
+  lang?: TcgLang;
 }
 
 type BriefLike = {
@@ -78,6 +81,10 @@ export function isTcgdexImageUrl(url: string | null | undefined): boolean {
   }
 }
 
+export function normalizeTcgLang(raw: string | null | undefined): TcgLang {
+  return (raw ?? "").trim().toLowerCase() === "ja" ? "ja" : "en";
+}
+
 /** No-op cache: Bindarr already persists successes in SQLite. */
 class NoSdkCache {
   get(): undefined {
@@ -91,6 +98,12 @@ class NoSdkCache {
   }
 }
 
+function makeSdk(lang: TcgLang): TCGdex {
+  const sdk = new TCGdex(lang);
+  sdk.setCache(new NoSdkCache() as never);
+  return sdk;
+}
+
 /**
  * TCGdex-backed lookups. Uses @tcgdex/sdk; override `TCGdex.fetch` via
  * {@link createTcgdexClient} for tests.
@@ -99,12 +112,8 @@ export function createTcgdexClient(customFetch?: TcgFetch) {
   if (customFetch) {
     TCGdex.fetch = customFetch as typeof fetch;
   }
-  const sdk = new TCGdex("en");
-  // SDK defaults to an hour of in-memory caching; that would hide upstream
-  // failures from our retry/stale-SQLite path. Disable it.
-  sdk.setCache(new NoSdkCache() as never);
 
-  async function enrichBriefs(briefs: BriefLike[], limit: number): Promise<TcgCardResult[]> {
+  async function enrichBriefs(sdk: TCGdex, briefs: BriefLike[], limit: number): Promise<TcgCardResult[]> {
     const slice = briefs.slice(0, limit);
     const details = await Promise.all(
       slice.map(async (brief) => {
@@ -123,15 +132,18 @@ export function createTcgdexClient(customFetch?: TcgFetch) {
   async function searchCards(opts: SearchCardsOpts): Promise<TcgCardResult[]> {
     const name = opts.name.trim();
     if (!name) return [];
+    const lang = normalizeTcgLang(opts.lang);
+    const sdk = makeSdk(lang);
     const pageSize = opts.pageSize ?? 8;
     let q = Query.create().contains("name", name);
     const number = (opts.number ?? "").trim();
-    if (number) q = q.contains("localId", number);
+    // Exact localId — contains("81") falsely matches Pocket #181.
+    if (number) q = q.equal("localId", number);
     const set = (opts.set ?? "").trim();
     if (set) q = q.contains("set.name", set);
     q = q.paginate(1, pageSize);
     const briefs = (await sdk.card.list(q)) as BriefLike[];
-    return enrichBriefs(briefs ?? [], pageSize);
+    return enrichBriefs(sdk, briefs ?? [], pageSize);
   }
 
   async function searchByArtist(opts: SearchArtistOpts): Promise<{ cards: TcgCardResult[]; page: number; pageSize: number }> {
@@ -139,15 +151,18 @@ export function createTcgdexClient(customFetch?: TcgFetch) {
     const page = Math.max(1, opts.page ?? 1);
     const pageSize = Math.min(48, Math.max(1, opts.pageSize ?? 24));
     if (!illustrator) return { cards: [], page, pageSize };
+    const lang = normalizeTcgLang(opts.lang);
+    const sdk = makeSdk(lang);
     const q = Query.create().equal("illustrator", illustrator).paginate(page, pageSize);
     const briefs = (await sdk.card.list(q)) as BriefLike[];
-    const cards = await enrichBriefs(briefs ?? [], pageSize);
+    const cards = await enrichBriefs(sdk, briefs ?? [], pageSize);
     return { cards, page, pageSize };
   }
 
-  async function getCardById(id: string): Promise<TcgCardResult | null> {
+  async function getCardById(id: string, lang: TcgLang = "en"): Promise<TcgCardResult | null> {
     const clean = id.trim();
     if (!clean) return null;
+    const sdk = makeSdk(normalizeTcgLang(lang));
     try {
       const detail = (await sdk.card.get(clean)) as DetailLike | undefined;
       if (!detail) return null;
@@ -157,7 +172,7 @@ export function createTcgdexClient(customFetch?: TcgFetch) {
     }
   }
 
-  return { searchCards, searchByArtist, getCardById, sdk };
+  return { searchCards, searchByArtist, getCardById };
 }
 
 export type TcgdexClient = ReturnType<typeof createTcgdexClient>;

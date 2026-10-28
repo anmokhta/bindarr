@@ -32,7 +32,12 @@ export default function BankItemForm({
   const [appliesToGame, setAppliesToGame] = useState(initial?.appliesToGame ?? "");
   const [maker, setMaker] = useState(initial?.maker ?? "");
   const [year, setYear] = useState(initial?.year?.toString() ?? "");
-  const [language, setLanguage] = useState(initial?.language ?? "");
+  const [language, setLanguage] = useState(() => {
+    const existing = (initial?.language ?? "").trim().toLowerCase();
+    if (existing === "ja" || existing === "en") return existing;
+    if (/^japanese\b/i.test(initial?.set ?? "")) return "ja";
+    return "en";
+  });
   const [condition, setCondition] = useState(initial?.condition ?? "");
   const [apiId, setApiId] = useState<string | null>(initial?.apiId ?? null);
   const [lookupResults, setLookupResults] = useState<TcgCard[]>([]);
@@ -49,13 +54,19 @@ export default function BankItemForm({
         name: name.trim(),
         number,
         set,
-        language: language.trim() || null,
+        language: isMisc ? (language.trim() || null) : language,
       });
       setLookupResults(cards);
       if (cards.length) {
         setLookupStatus(`${cards.length} match(es) — click to fill:`);
       } else {
-        setLookupStatus(hadSet ? "No matches (tried without set)." : "No matches.");
+        setLookupStatus(
+          language === "ja"
+            ? "No matches (JP catalog needs Japanese names; EN fallback found nothing usable)."
+            : hadSet
+              ? "No matches (tried without set)."
+              : "No matches.",
+        );
       }
     } catch (e) {
       setLookupStatus(e instanceof Error ? e.message : "Lookup failed");
@@ -94,7 +105,7 @@ export default function BankItemForm({
         appliesToGame: isMisc ? (appliesToGame || null) : null,
         maker: maker.trim() || null,
         year: year ? Number(year) : null,
-        language: language.trim() || null,
+        language: isMisc ? (language.trim() || null) : language,
         condition: condition.trim() || null,
       });
     } finally {
@@ -139,6 +150,17 @@ export default function BankItemForm({
             <label className="field">
               <span className="field-label">Number</span>
               <input value={number} onChange={(e) => setNumber(e.target.value)} />
+            </label>
+            <label className="field">
+              <span className="field-label">Language</span>
+              <select
+                value={language === "ja" ? "ja" : "en"}
+                onChange={(e) => setLanguage(e.target.value)}
+                aria-label="Card language"
+              >
+                <option value="en">English (EN)</option>
+                <option value="ja">Japanese (JP)</option>
+              </select>
             </label>
             <label className="field">
               <span className="field-label">Artist</span>

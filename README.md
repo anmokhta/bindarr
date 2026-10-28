@@ -9,11 +9,15 @@ The planner shows Page 1, then two-page spreads, with a page-size slider.
 Cards live in one bank with independent have/want flags — Bank → Cards is
 the have view, Bank → Wishlist the want view (wishlist cards render in
 black & white in binders until marked obtained). Both views import/export
-JSON/CSV (including PriceCharting collection CSV exports). Bank → Tags and
-Bank → Collections preview the tags/collections
-already in use; management and auto-tag rules are planned (see
+JSON/CSV (including PriceCharting collection CSV exports), sort by
+name/set/number/artist/date added, filter by picture, and support checkbox
+bulk actions (add/remove tags, set collection, delete, Identify).
+Bank → Bulk add pastes a list of names/numbers for per-card TCGdex review.
+Bank → Tags and Bank → Collections preview the tags/collections already in
+use; create/rename/delete and auto-tag rules are planned (see
 [docs/ROADMAP.md](docs/ROADMAP.md)). Includes Pokémon card lookup via
-[TCGdex](https://tcgdex.dev/), drag-to-swap pockets, and automatic saving. External API
+[TCGdex](https://tcgdex.dev/) (EN or JP language on search, Identify, and
+Bulk add), drag-to-swap pockets, and automatic saving. External API
 calls are logged under Settings → Logs (`/settings?tab=calls`); rows are
 kept indefinitely for now — prune entries older than 90 days if it grows.
 
@@ -49,9 +53,31 @@ tar czf bindarr-data.tar.gz -C data .
 mkdir -p data && tar xzf bindarr-data.tar.gz -C data
 ```
 
+`./data/` may also contain SQLite WAL/SHM sidecars and
+`bindarr.db.write.lock` (the single-writer lease). Back up the whole folder
+while Bindarr is stopped so those files stay consistent.
+
 > **Security:** Bindarr has **no built-in authentication**. Run it on a
 > trusted LAN, or put a reverse proxy with auth/TLS (Caddy, Traefik, …) in
 > front. Do not expose port 8080 directly to the public internet.
+
+## Configuration
+
+Copy [`.env.example`](.env.example) or set these when running compose / Node:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `8080` | Host/container listen port |
+| `DATABASE_PATH` | `./data/bindarr.db` (Docker: `/data/bindarr.db`) | SQLite file path |
+| `APP_VERSION` | from `package.json` | Reported by `/api/health` and Settings |
+| `GITHUB_REPO` | `anmokhta/bindarr` | Repo for Settings “update available” checks |
+| `HOST` | `0.0.0.0` | Bind address (server only) |
+| `WEB_DIST` | `apps/web/dist` | Built UI directory for production static serve |
+| `GITHUB_TOKEN` | _(unset)_ | Optional Bearer token for GitHub Releases API |
+
+Pokémon lookups use the free [TCGdex](https://tcgdex.dev/) API — no API key
+required. Pass `lang=ja` on `/api/lookup` (or pick Japanese in the UI) for
+the Japanese catalog; English is the default.
 
 ## Local development (no Docker)
 
@@ -109,9 +135,12 @@ will offer to import that data to the server on first load.
 - `apps/web` — Vite + React + TypeScript frontend (two-level task bar:
   Bank / Binders / Extras, each with subsections; routes in
   [docs/ROADMAP.md](docs/ROADMAP.md))
-- `apps/server` — Fastify API (`/api/state`, `/api/bank`, `/api/lookup`,
-  `/api/calls`, `/api/settings`) + SQLite
+- `apps/server` — Fastify + SQLite. Main routes: `/api/health`,
+  `/api/state`, `/api/bank` (CRUD + `/import`), `/api/lookup`,
+  `/api/lookup/artist`, `/api/migrate/pokemontcg-images`, `/api/calls`,
+  `/api/calls/stats`, `/api/settings`, `/api/version/latest`,
+  `/api/write-lease/takeover`
 - `packages/shared` — shared types/Zod schemas for planner + bank state
 - `apps/desktop-electron` — Electron shell (see ADR 0001)
-- `binder-planner-handoff.md` — original design notes (historical;
-  superseded by this README and `docs/ROADMAP.md`)
+- `docs/archive/binder-planner-handoff.md` — original design notes
+  (historical; superseded by this README and `docs/ROADMAP.md`)

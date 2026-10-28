@@ -47,3 +47,9 @@ package, which matters more for a self-hosted personal tool than bundle size.
   is read-only.
 - The Tauri spike was deleted; revisit only if bundle size becomes a real
   problem and a Rust/sidecar pipeline is worth it.
+
+## Update (2026-10-27)
+TCG card lookup is no longer a browser-side fetch to pokemontcg.io. The
+server proxies Pokémon lookups through `@tcgdex/sdk` (`/api/lookup`,
+`/api/lookup/artist`), with SQLite cache, retry, call logging, and optional
+`lang=ja`. The Electron packaging decision above is unchanged.

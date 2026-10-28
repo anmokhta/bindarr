@@ -1,9 +1,9 @@
 # Artist Search — Research Notes
 
-Goal: "view other cards by this artist" from any card, and a dedicated
-Artist Search tab.
+API and data-source notes. Product status and the Planned milestone live in
+[../artist-search.md](../artist-search.md) — **Artist Search is not shipped**.
 
-## Shipped behavior
+## Backend (scaffold)
 
 - Extras → Artist Search calls `GET /api/lookup/artist?name=…&page=…`, which
   uses `@tcgdex/sdk` with `Query.equal("illustrator", name)` and pagination
@@ -14,6 +14,8 @@ Artist Search tab.
 - Prefill from `?artist=` auto-runs search on mount. artofpkm remains a
   secondary deep link (`/illustrators/{slug}`).
 - Bank / binder "More by this artist" actions navigate here with the query set.
+- Card name lookup accepts `lang=en|ja`; the artist endpoint does not read
+  `lang` today and searches the English catalog only.
 
 ## The Art of Pokémon (artofpkm.com)
 

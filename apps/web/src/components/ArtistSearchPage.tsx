@@ -50,9 +50,10 @@ export default function ArtistSearchPage() {
 
   return (
     <section className="page-section">
-      <h2 className="page-title">Artist Search</h2>
+      <h2 className="page-title">Artist Search <span className="planned-badge">Planned</span></h2>
       <p className="page-sub">
-        Find Pokémon cards by illustrator via TCGdex. Open The Art of Pokémon for a broader gallery when you want it.
+        Scaffold only — UI redo, clearer in-app results, artofpkm links, and Save to bank are still planned
+        (see <code>docs/artist-search.md</code>). TCGdex illustrator lookup and The Art of Pokémon deep link work below as a preview.
       </p>
       <div className="bank-filters-bar">
         <div className="bank-search-row">

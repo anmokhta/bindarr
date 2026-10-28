@@ -12,9 +12,9 @@ The task bar is three areas, plus Settings.
 
 **Binders** model physical binders. Layouts are 3×3 (9 pockets), 2×2 (4), and 4×3 (12). Size is counted in double-sided sheets: a 3-sheet 2×2 binder is 6 sides and 24 slots. The planner shows Page 1 alone, then two-page spreads (2–3, 4–5, …). Binders can be created, renamed, duplicated, archived, restored, and permanently deleted. Sheet count can shrink only when that would not drop cards.
 
-**Bank** is one card table with independent have and want flags. Bank → Cards is the have view; Bank → Wishlist is the want view. Wishlist cards stay in binders but render grayscale until marked obtained. Cards can carry many tags and one collection. Import and export is JSON and CSV, with dedupe. Games in the model are Pokémon, Magic, Yu-Gi-Oh!, Lorcana, and One Piece, plus a Misc bank. Only Pokémon lookup works today. Add and edit use a modal.
+**Bank** is one card table with independent have and want flags. Bank → Cards is the have view; Bank → Wishlist is the want view. Wishlist cards stay in binders but render grayscale until marked obtained. Cards can carry many tags and one collection. Import and export is JSON and CSV, with dedupe (including PriceCharting). Games in the model are Pokémon, Magic, Yu-Gi-Oh!, Lorcana, and One Piece, plus a Misc bank. Only Pokémon lookup works today. Add and edit use a modal with an EN/JP language field for Pokémon. Bank → Bulk add pastes name/number lines for per-card TCGdex review (Have / Want / Both destination, language selector). Cards and Wishlist also sort (name/set/number/artist/date added), filter by picture, and support a checkbox bulk bar (add/remove tags, set collection, delete, Identify missing images).
 
-**Extras** is Artist Search: TCGdex illustrator results in-app, with artofpkm as an external secondary link. Artist icon buttons elsewhere deep-link here with `?artist=` prefilled.
+**Extras** is Artist Search — **Planned / not shipped**. A scaffold page and TCGdex illustrator proxy exist (Planned badge on the title); the milestone still needs a UI redo, clear in-app results, artofpkm links, and Save to bank. Artist icon buttons deep-link with `?artist=` prefilled. Design note: [docs/artist-search.md](docs/artist-search.md).
 
 **Settings** covers theme, visible games, nav style, the API call log (1h through 30d counts), a one-shot migrate for legacy `images.pokemontcg.io` URLs, and a version check against GitHub Releases.
 
@@ -32,9 +32,9 @@ Behavior that matters when changing the UI:
 
 - Planner state autosaves to the server, with a loading / saved / saving / error indicator.
 - Pockets support drag-to-swap and click-to-place from the bank (Escape cancels place mode).
-- A filled pocket is an instance of a bank card (`bankId` required). Display resolves from the bank; the pocket’s own field is the local `tag`.
+- A filled pocket preferably links to a bank card (`bankId`). Display resolves from the bank via `resolveSlotView`; the pocket’s own field is the local `tag`. Legacy slots may omit `bankId` and fall back to denormalized name/note/image on the slot.
 - First load in a browser that still has the old single-file planner offers to import `localStorage` (`binderPlannerState_v1`).
-- Bank forms and filters already use tags and collections. The Tags and Collections screens are read-only previews, including disabled rule, bulk-apply, slot-label, and Optimize panels.
+- Bank forms, filters, and the checkbox bulk bar already edit tags and collections. The Tags and Collections screens are read-only previews of values in use, including disabled rule, bulk-apply, slot-label, and Optimize panels (taxonomy create/rename/delete is still planned).
 
 Almost all app state lives in `App.tsx` and is passed into page components. Shared types and validation come from `@bindarr/shared`.
 
@@ -45,16 +45,16 @@ Fastify serves the API and, in production, the built UI. SQLite (`better-sqlite3
 | Table | What it holds |
 | --- | --- |
 | `planner_state` | One JSON document for every binder |
-| `bank_items` | One JSON document per card |
+| `bank_items` | One JSON document per card (`created_at` / `updated_at` columns; `created_at` is “date added”) |
 | `app_settings` | Visible games and nav style |
 | `lookup_cache` | Pokémon TCGdex responses |
 | `api_calls` | Every upstream lookup attempt |
 
-API surface: `/api/state`, `/api/bank` (CRUD plus import), `/api/lookup`, `/api/lookup/artist`, `/api/migrate/pokemontcg-images`, `/api/calls`, `/api/settings`, `/api/health`, `/api/version/latest`.
+API surface: `/api/health`, `/api/state`, `/api/bank` (CRUD plus `/import`), `/api/lookup` (optional `lang=ja`), `/api/lookup/artist`, `/api/migrate/pokemontcg-images`, `/api/calls`, `/api/calls/stats`, `/api/settings`, `/api/version/latest`, `/api/write-lease/takeover`.
 
 A file lock (`apps/server/src/write-lease.ts`) lets only one process write the database. A second instance opens read-only and writes return HTTP 423. Electron’s first run can create a new database or point at an existing one. There is no user authentication. The README expects a trusted LAN or a reverse proxy with auth and TLS.
 
-Pokémon lookup uses `@tcgdex/sdk` against `api.tcgdex.net` with retry, a SQLite cache, and stale fallback. Each attempt is logged. No API key is required.
+Pokémon lookup uses `@tcgdex/sdk` against `api.tcgdex.net` with retry, a SQLite cache, and stale fallback. Optional `lang=ja` selects the Japanese catalog (exact `localId` matching). Each attempt is logged. No API key is required.
 
 ## Tech stack and how it ships
 
@@ -81,11 +81,11 @@ Pages are sides of double-sided sheets. An odd side count is padded with a blank
 
 ## Card identity
 
-A filled pocket is always a bank card instance (`bankId`). Card fields (name, set, number, image, artist, have/want, …) live on the bank item; the UI resolves them live via `resolveSlotView`. The pocket stores `bankId` plus a pocket-local `tag` (denormalized name/note/image may still sit in slot JSON for older data). Editing the bank updates every pocket that links to it. Orphans (deleted bank row) show a missing-card state, not a freeform editor. Have and want are independent flags on the same bank row. Import merges on `apiId` within a game, or on name + set + number when there is no `apiId`. Tags are a list; collection is a single string. That split is the open question before the Tags and Collections manager, the rules engine, and slot labels (a tag or collection attached to a slot, page, or section so placed cards inherit it). See [docs/labels-and-optimize.md](docs/labels-and-optimize.md).
+A filled pocket preferably links to a bank card (`bankId`). Card fields (name, set, number, image, artist, have/want, language, …) live on the bank item; the UI resolves them live via `resolveSlotView`. The pocket stores `bankId` (nullable/optional for legacy slots) plus a pocket-local `tag` (denormalized name/note/image may still sit in slot JSON for older data). Editing the bank updates every pocket that links to it. Orphans (deleted bank row) show a missing-card state, not a freeform editor. Have and want are independent flags on the same bank row. Import merges on `apiId` within a game, or on name + set + number when there is no `apiId`. Tags are a list; collection is a single string. That split is the open question before the Tags and Collections manager, the rules engine, and slot labels (a tag or collection attached to a slot, page, or section so placed cards inherit it). See [docs/labels-and-optimize.md](docs/labels-and-optimize.md).
 
 ## Outside data
 
-Pokémon lookup goes through the server to TCGdex (`@tcgdex/sdk`). The proxy retries, caches successes, and serves the cache when the upstream is down. Card images are remote TCGdex asset URLs (`…/low.webp`), not files in the database. Settings can rewrite legacy `images.pokemontcg.io` bank/pocket URLs to TCGdex assets. Every attempt is written to `api_calls` and shown under Settings → Logs; rows are kept with no pruning yet. A version check calls the GitHub releases API for `anmokhta/bindarr`. Artist Search uses the same stack filtered by illustrator; artofpkm is an external link only. Notes: [docs/research/artist-search.md](docs/research/artist-search.md).
+Pokémon lookup goes through the server to TCGdex (`@tcgdex/sdk`). The proxy retries, caches successes, and serves the cache when the upstream is down. Card name lookup accepts `lang=en|ja` (JA-first then EN for Japanese Identify / Bulk add). Card images are remote TCGdex asset URLs (`…/low.webp`), not files in the database. Settings can rewrite legacy `images.pokemontcg.io` bank/pocket URLs to TCGdex assets. Every attempt is written to `api_calls` and shown under Settings → Logs; rows are kept with no pruning yet. A version check calls the GitHub releases API for `anmokhta/bindarr`. An illustrator endpoint (`/api/lookup/artist`) exists for the Artist Search scaffold (EN catalog); the Extras feature itself is not shipped — see [docs/artist-search.md](docs/artist-search.md) and [docs/research/artist-search.md](docs/research/artist-search.md).
 
 ## Trust boundary
 
@@ -97,7 +97,7 @@ Theme and page-size scale stay in that browser’s `localStorage`. Visible games
 
 ## Backup and growth
 
-The backup unit is the `./data` folder (database plus SQLite WAL files). There is no in-app export of the whole app yet. The call log and lookup cache grow inside that same file.
+The backup unit is the `./data` folder (database plus SQLite WAL/SHM files and the optional `bindarr.db.write.lock` lease file). There is no in-app export of the whole app yet. The call log and lookup cache grow inside that same file.
 
 ## Packaging
 
@@ -113,8 +113,8 @@ From [docs/ROADMAP.md](docs/ROADMAP.md), in order:
 
 1. Tags and Collections manager (create, rename, delete, with card review).
 2. Rules engine (preview, then bulk-apply; optional auto-apply later).
-3. Artist Search through the lookup proxy.
+3. Artist Search (UI redo, in-app results, artofpkm links, Save to bank; Planned until done).
 4. Named binder sections with filled/total rollups.
 5. Slot and section labels.
 6. Organize → Optimize: a before/after diff that writes nothing until confirmed.
-7. Lookups for the other games, in-app backup and restore, call-log pruning, and signed desktop builds.
+7. Lookups for the other games, in-app backup and restore, call-log pruning, signed desktop builds, and a first `v*` GitHub Release.
